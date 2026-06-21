@@ -607,7 +607,7 @@ function fetchPriceFromEastMoney(secid) {
 function fetchPricesFromSina(symbols, symbolToPool) {
   return new Promise((resolve) => {
     if (!symbols.length) { resolve({ok:0,fail:0,total:0}); return; }
-    const codes = symbols.map(s => 'nf_' + s.toLowerCase());
+    const codes = symbols.map(s => 'nf_' + s.toUpperCase());
     const cbName = '_sina_cb_' + Date.now();
     const timeout = setTimeout(() => { cleanup(); resolve({ok:0,fail:symbols.length,total:symbols.length}); }, 10000);
 
@@ -630,8 +630,8 @@ function fetchPricesFromSina(symbols, symbolToPool) {
           const raw = window['hq_str_' + code];
           if (raw) {
             const parts = raw.split(',');
-            // try common price indices
-            const tries = [3,4,6,1,2];
+            // Sina futures format: [8]=latest, [7]=ask, [6]=bid, [3]=high, [4]=low, [2]=open, [5]=prev close
+            const tries = [8,7,6,3,4,2,5];
             for (let j = 0; j < tries.length; j++) {
               const p = parseFloat(parts[tries[j]]);
               if (!isNaN(p) && p > 0) {
