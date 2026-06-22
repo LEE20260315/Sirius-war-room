@@ -451,7 +451,7 @@ input:checked + .slider:before { transform:translateX(16px); background:#fff; }
 
 <script>
 // ============ VERSION ============
-const APP_VERSION = '2026.06.22-v4';
+const APP_VERSION = '2026.06.22-v5';
 
 // ============ DATA STORE ============
 const DEFAULT_COMMODITIES = [
@@ -1194,11 +1194,23 @@ function submitRollover() {
   if (poolItem) poolItem.contractCode = newContract;
 
   rolloverTradeIdx = -1;
+  // 自动记录交易日志
+  const pnlStr2 = netPnl >= 0 ? `盈利 ¥${netPnl.toFixed(2)}` : `亏损 ¥${Math.abs(netPnl).toFixed(2)}`;
+  state.journal.unshift({
+    id: Date.now(),
+    date: new Date().toISOString().slice(0,10),
+    symbol: t.symbol,
+    dir: t.dir,
+    logic: `[自动记录] 移仓 ${t.contractCode||''} → ${newContract}，${t.dir==='long'?'做多':'做空'} ${t.lots}手，旧合约平仓 ${pnlStr2}，移仓成本 ¥${totalRolloverCost.toFixed(2)}`,
+    discipline: 'yes',
+    review: ''
+  });
   saveState();
+  updateEquityHistory(true);
   renderPool();
   closeModal('rolloverModal');
   renderTrades();
-  updateEquityHistory();
+  renderJournal();
   showToast(`已移仓至 ${newContract}，移仓成本 ¥${totalRolloverCost.toFixed(2)}`);
 }
 
@@ -1274,9 +1286,21 @@ function submitTrade() {
     openDate: new Date().toISOString().slice(0,10),
     openCommission
   });
+  // 自动记录交易日志
+  state.journal.unshift({
+    id: Date.now(),
+    date: new Date().toISOString().slice(0,10),
+    symbol: sym,
+    dir: dir,
+    logic: `[自动记录] 开仓${dir==='long'?'做多':'做空'} ${lots}手 @ ${price}，止损 ${sl}，保证金 ¥${margin.toFixed(0)}`,
+    discipline: 'yes',
+    review: ''
+  });
   saveTrades();
+  updateEquityHistory(true);
   closeModal('tradeModal');
   renderTrades();
+  renderJournal();
   showToast(`已开仓 ${sym} ${dir==='long'?'做多':'做空'} ${lots}手`);
 }
 
@@ -1367,13 +1391,25 @@ function submitClose() {
     symbol: t.symbol, dir: t.dir, lots: t.lots, openPrice: t.price, closePrice,
     pnl: netPnl, closeDate: new Date().toISOString().slice(0,10)
   });
+  // 自动记录交易日志
+  const pnlStr = netPnl >= 0 ? `盈利 ¥${netPnl.toFixed(2)}` : `亏损 ¥${Math.abs(netPnl).toFixed(2)}`;
+  state.journal.unshift({
+    id: Date.now(),
+    date: new Date().toISOString().slice(0,10),
+    symbol: t.symbol,
+    dir: t.dir,
+    logic: `[自动记录] 平仓${t.dir==='long'?'做多':'做空'} ${t.lots}手，开仓 ¥${t.price} → 平仓 ¥${closePrice}，${pnlStr}（手续费+滑点已扣）`,
+    discipline: 'yes',
+    review: ''
+  });
   state.trades.splice(closeTradeIdx, 1);
   closeTradeIdx = -1;
   saveTrades();
+  updateEquityHistory(true);
   closeModal('closeModal');
   renderTrades();
-  updateEquityHistory();
-  showToast('已平仓');
+  renderJournal();
+  showToast(`已平仓，${pnlStr}`);
 }
 
 function saveTrades() { saveState(); }
@@ -1435,14 +1471,15 @@ function renderJournal() {
     return;
   }
   list.innerHTML = state.journal.map((j, i) => {
+    const isAuto = j.logic && j.logic.startsWith('[自动记录]');
     const discMap = {yes:['✅ 严格执行','var(--green)'],partial:['⚠ 部分执行','var(--yellow)'],no:['❌ 违反纪律','var(--red)']};
     const [dLabel, dColor] = discMap[j.discipline] || discMap.yes;
     return `<div class="card" style="margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div><strong>${escapeHtml(j.symbol)}</strong> · ${j.dir==='long'?'做多':'做空'} · ${escapeHtml(j.date)}</div>
+        <div><strong>${escapeHtml(j.symbol)}</strong> · ${j.dir==='long'?'做多':'做空'} · ${escapeHtml(j.date)}${isAuto?' <span style="font-size:10px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px">自动</span>':''}</div>
         <div style="color:${dColor};font-weight:600">${dLabel}</div>
       </div>
-      <div style="margin-top:8px;font-size:13px"><strong>开仓逻辑:</strong> ${escapeHtml(j.logic||'未填写')}</div>
+      <div style="margin-top:8px;font-size:13px"><strong>${isAuto?'摘要':'开仓逻辑'}:</strong> ${escapeHtml(j.logic||'未填写')}</div>
       <div style="margin-top:4px;font-size:13px"><strong>复盘:</strong> ${escapeHtml(j.review||'未填写')}</div>
       <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="state.journal.splice(${i},1);saveState();renderJournal()">删除</button>
     </div>`;
@@ -1450,14 +1487,14 @@ function renderJournal() {
 }
 
 // ============ DASHBOARD ============
-function updateEquityHistory() {
+function updateEquityHistory(forceNew) {
   const today = new Date().toISOString().slice(0,10);
   const eq = getCurrentEquity();
   const last = state.equityHistory[state.equityHistory.length-1];
-  if (last && last.date === today) {
-    last.equity = eq;
-  } else {
+  if (forceNew || !last || last.date !== today) {
     state.equityHistory.push({date: today, equity: eq});
+  } else {
+    last.equity = eq;
   }
   saveState();
 }
