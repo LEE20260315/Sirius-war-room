@@ -128,11 +128,12 @@ input:checked + .slider:before { transform:translateX(16px); background:#fff; }
 <div id="tab-pool" class="tab-content active">
   <div class="card">
     <h3>品种观察池 · 历史低位品种跟踪</h3>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">行情价格来自<strong>连续合约</strong>（主力合约自动切换），合约号请手动填写当前主力合约代码（如 RB2610）。合约到期后请手动移仓。</p>
     <div style="overflow-x:auto">
       <table id="poolTable">
         <thead>
           <tr>
-            <th>品种</th><th>合约乘数</th><th>保证金比例</th><th>现价</th><th>历史分位</th>
+            <th>品种</th><th>合约</th><th>合约乘数</th><th>保证金比例</th><th>现价</th><th>历史分位</th>
             <th>成本线</th><th>状态</th><th>操作</th>
           </tr>
         </thead>
@@ -202,7 +203,7 @@ input:checked + .slider:before { transform:translateX(16px); background:#fff; }
       <table id="tradeTable">
         <thead>
           <tr>
-            <th>品种</th><th>方向</th><th>手数</th><th>开仓价</th><th>止损价</th>
+            <th>品种</th><th>合约</th><th>方向</th><th>手数</th><th>开仓价</th><th>止损价</th>
             <th>现价</th><th>浮动盈亏</th><th>已用保证金</th><th>风险占比</th><th>操作</th>
           </tr>
         </thead>
@@ -216,7 +217,7 @@ input:checked + .slider:before { transform:translateX(16px); background:#fff; }
       <table id="closedTradeTable">
         <thead>
           <tr>
-            <th>品种</th><th>方向</th><th>手数</th><th>开仓价</th><th>平仓价</th>
+            <th>品种</th><th>合约</th><th>方向</th><th>手数</th><th>开仓价</th><th>平仓价</th>
             <th>盈亏</th><th>日期</th>
           </tr>
         </thead>
@@ -250,6 +251,10 @@ input:checked + .slider:before { transform:translateX(16px); background:#fff; }
   <div class="card">
     <h3>距100万进度</h3>
     <div class="progress-bar"><div class="progress-fill" id="progressFill">0%</div></div>
+  </div>
+  <div class="card">
+    <h3>移仓历史</h3>
+    <div id="rolloverHistoryTable"></div>
   </div>
   <div id="riskAlert"></div>
 </div>
@@ -377,6 +382,39 @@ input:checked + .slider:before { transform:translateX(16px); background:#fff; }
   </div>
 </div>
 
+<!-- 移仓弹窗 -->
+<div class="modal-overlay" id="rolloverModal">
+  <div class="modal">
+    <h3>合约移仓</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">将当前持仓从旧合约平仓，同时在新合约上开仓。移仓会产生双向手续费。</p>
+    <div class="form-group">
+      <label>当前合约</label>
+      <input type="text" id="rmOldContract" readonly style="background:var(--bg3);color:var(--text2)">
+    </div>
+    <div class="form-group">
+      <label>新合约代码</label>
+      <input type="text" id="rmNewContract" placeholder="如 RB2610">
+    </div>
+    <div class="form-group">
+      <label>旧合约平仓价</label>
+      <input type="number" id="rmOldPrice" step="0.01">
+    </div>
+    <div class="form-group">
+      <label>新合约开仓价</label>
+      <input type="number" id="rmNewPrice" step="0.01">
+    </div>
+    <div class="form-group">
+      <label>新合约止损价</label>
+      <input type="number" id="rmNewStopLoss" step="0.01">
+    </div>
+    <div id="rmCostInfo" style="font-size:13px;color:var(--text2);margin:8px 0"></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="submitRollover()">确认移仓</button>
+      <button class="btn" onclick="closeModal('rolloverModal')">取消</button>
+    </div>
+  </div>
+</div>
+
 <!-- 日志弹窗 -->
 <div class="modal-overlay" id="journalModal">
   <div class="modal">
@@ -412,23 +450,23 @@ input:checked + .slider:before { transform:translateX(16px); background:#fff; }
 
 <script>
 // ============ VERSION ============
-const APP_VERSION = '2026.06.22-v2';
+const APP_VERSION = '2026.06.22-v3';
 
 // ============ DATA STORE ============
 const DEFAULT_COMMODITIES = [
-  {symbol:'生猪',multiplier:16,marginRate:0.12,price:13500,percentile:15,costLine:14000,status:'bottom'},
-  {symbol:'白糖',multiplier:10,marginRate:0.08,price:5800,percentile:20,costLine:5600,status:'bottom'},
-  {symbol:'PVC',multiplier:5,marginRate:0.08,price:5200,percentile:18,costLine:5400,status:'bottom'},
-  {symbol:'聚丙烯PP',multiplier:5,marginRate:0.08,price:7100,percentile:22,costLine:7300,status:'bottom'},
-  {symbol:'玻璃',multiplier:20,marginRate:0.08,price:1250,percentile:12,costLine:1300,status:'bottom'},
-  {symbol:'纯碱',multiplier:20,marginRate:0.08,price:1650,percentile:16,costLine:1700,status:'bottom'},
-  {symbol:'螺纹钢',multiplier:10,marginRate:0.10,price:3050,percentile:25,costLine:3200,status:'bottom'},
-  {symbol:'热卷',multiplier:10,marginRate:0.10,price:3150,percentile:23,costLine:3300,status:'bottom'},
-  {symbol:'铁矿石',multiplier:100,marginRate:0.12,price:680,percentile:28,costLine:720,status:'watch'},
-  {symbol:'玉米',multiplier:10,marginRate:0.08,price:2400,percentile:20,costLine:2500,status:'bottom'},
-  {symbol:'甲醇',multiplier:10,marginRate:0.08,price:2250,percentile:18,costLine:2400,status:'bottom'},
-  {symbol:'烧碱',multiplier:30,marginRate:0.08,price:2600,percentile:15,costLine:2750,status:'bottom'},
-  {symbol:'尿素',multiplier:20,marginRate:0.08,price:1800,percentile:17,costLine:1900,status:'bottom'}
+  {symbol:'生猪',contractCode:'LH2609',multiplier:16,marginRate:0.12,price:13500,percentile:15,costLine:14000,status:'bottom'},
+  {symbol:'白糖',contractCode:'SR2609',multiplier:10,marginRate:0.08,price:5800,percentile:20,costLine:5600,status:'bottom'},
+  {symbol:'PVC',contractCode:'V2609',multiplier:5,marginRate:0.08,price:5200,percentile:18,costLine:5400,status:'bottom'},
+  {symbol:'聚丙烯PP',contractCode:'PP2609',multiplier:5,marginRate:0.08,price:7100,percentile:22,costLine:7300,status:'bottom'},
+  {symbol:'玻璃',contractCode:'FG2609',multiplier:20,marginRate:0.08,price:1250,percentile:12,costLine:1300,status:'bottom'},
+  {symbol:'纯碱',contractCode:'SA2609',multiplier:20,marginRate:0.08,price:1650,percentile:16,costLine:1700,status:'bottom'},
+  {symbol:'螺纹钢',contractCode:'RB2610',multiplier:10,marginRate:0.10,price:3050,percentile:25,costLine:3200,status:'bottom'},
+  {symbol:'热卷',contractCode:'HC2610',multiplier:10,marginRate:0.10,price:3150,percentile:23,costLine:3300,status:'bottom'},
+  {symbol:'铁矿石',contractCode:'I2609',multiplier:100,marginRate:0.12,price:680,percentile:28,costLine:720,status:'watch'},
+  {symbol:'玉米',contractCode:'C2609',multiplier:10,marginRate:0.08,price:2400,percentile:20,costLine:2500,status:'bottom'},
+  {symbol:'甲醇',contractCode:'MA2609',multiplier:10,marginRate:0.08,price:2250,percentile:18,costLine:2400,status:'bottom'},
+  {symbol:'烧碱',contractCode:'SH2609',multiplier:30,marginRate:0.08,price:2600,percentile:15,costLine:2750,status:'bottom'},
+  {symbol:'尿素',contractCode:'UR2609',multiplier:20,marginRate:0.08,price:1800,percentile:17,costLine:1900,status:'bottom'}
 ];
 
 const FUND_DIMENSIONS = [
@@ -448,6 +486,7 @@ let state = {
   closedTrades: [],
   journal: [],
   equityHistory: [],
+  rolloverHistory: [],
   lastBackup: null
 };
 
@@ -457,7 +496,6 @@ function loadState() {
     if (s) {
       const saved = JSON.parse(s);
       state = {...state, ...saved};
-      // version migration
       if (!state.version) state.version = APP_VERSION;
       if (!state.lastBackup) state.lastBackup = null;
     } else {
@@ -479,7 +517,6 @@ function escapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-// ============ PERSISTENCE BACKUP ============
 function exportData() {
   const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
   const a = document.createElement('a');
@@ -520,6 +557,7 @@ function validateImportData(data) {
   if (data.closedTrades && !Array.isArray(data.closedTrades)) return false;
   if (data.journal && !Array.isArray(data.journal)) return false;
   if (data.equityHistory && !Array.isArray(data.equityHistory)) return false;
+  if (data.rolloverHistory && !Array.isArray(data.rolloverHistory)) return false;
   if (data.settings && typeof data.settings !== 'object') return false;
   if (data.fundamentals && typeof data.fundamentals !== 'object') return false;
   return true;
@@ -534,10 +572,7 @@ function updateBackupDisplay() {
 function toggleAutoBackup() {
   const on = document.getElementById('autoBackupToggle').checked;
   localStorage.setItem('futures_auto_backup', on ? '1' : '0');
-  if (on) {
-    showToast('已开启自动备份提醒');
-    checkAutoBackup();
-  }
+  if (on) { showToast('已开启自动备份提醒'); checkAutoBackup(); }
 }
 
 function initAutoBackup() {
@@ -552,16 +587,11 @@ function checkAutoBackup() {
   if (localStorage.getItem('futures_auto_backup') !== '1') return;
   const now = Date.now();
   const last = state.lastBackup ? new Date(state.lastBackup).getTime() : 0;
-  // remind every 7 days or if never backed up
   if (!last || (now - last > 7 * 24 * 60 * 60 * 1000)) {
-    if (confirm('⚠ 数据备份提醒\n\n您已开启自动备份提醒，但超过7天未导出数据。\n数据仅保存在浏览器本地，建议立即导出备份。\n\n是否立即导出？')) {
-      exportData();
-    }
+    if (confirm('⚠ 数据备份提醒\n\n您已开启自动备份提醒，但超过7天未导出数据。\n数据仅保存在浏览器本地，建议立即导出备份。\n\n是否立即导出？')) { exportData(); }
   }
 }
 
-// ============ AUTO FETCH PRICES ============
-// East Money HTTPS single-stock API (primary)
 const EASTMONEY_SYMBOL_MAP = {
   '螺纹钢':'113.rbm', '热卷':'113.hcm', '铁矿石':'114.im', '玉米':'114.cm',
   '生猪':'114.lhm', 'PVC':'114.vm', '聚丙烯PP':'114.ppm', 'PP':'114.ppm',
@@ -569,7 +599,6 @@ const EASTMONEY_SYMBOL_MAP = {
   '烧碱':'115.shm', '尿素':'115.urm'
 };
 
-// Sina Finance continuous contract mapping (backup)
 const SINA_SYMBOL_MAP = {
   '螺纹钢':'RB0', '热卷':'HC0', '铁矿石':'I0', '玉米':'C0',
   '生猪':'LH0', 'PVC':'V0', '聚丙烯PP':'PP0', 'PP':'PP0',
@@ -592,19 +621,16 @@ function setLastUpdateTime(ts) {
   if (el) el.textContent = '最近更新: ' + (ts || '--');
 }
 
-// === East Money JSONP single query ===
 function fetchPriceFromEastMoney(secid) {
   return new Promise((resolve) => {
     const cbName = '_em_cb_' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
     const timeout = setTimeout(() => { cleanup(); resolve(null); }, 7000);
-
     function cleanup() {
       clearTimeout(timeout);
       delete window[cbName];
       const s = document.getElementById('emScript_' + cbName);
       if (s) s.remove();
     }
-
     window[cbName] = function(data) {
       cleanup();
       if (!data) { resolve(null); return; }
@@ -615,7 +641,6 @@ function fetchPriceFromEastMoney(secid) {
       }
       resolve(null);
     };
-
     const script = document.createElement('script');
     script.id = 'emScript_' + cbName;
     script.src = `https://push2.eastmoney.com/api/qt/stock/get?ut=bd1d9ddb04089700cf9c27f6f7426281&invt=2&fltt=2&fields=f43&secid=${secid}&cb=${cbName}`;
@@ -624,22 +649,19 @@ function fetchPriceFromEastMoney(secid) {
   });
 }
 
-// === Sina Finance script-tag batch query ===
 function fetchPricesFromSina(symbols, symbolToPool) {
   return new Promise((resolve) => {
     if (!symbols.length) { resolve({ok:0,fail:0,total:0}); return; }
     const codes = symbols.map(s => 'nf_' + s.toUpperCase());
     const cbName = '_sina_cb_' + Date.now();
     const timeout = setTimeout(() => { cleanup(); resolve({ok:0,fail:symbols.length,total:symbols.length}); }, 10000);
-
     function cleanup() {
       clearTimeout(timeout);
       delete window[cbName];
       const s = document.getElementById('sinaScript');
       if (s) s.remove();
     }
-
-    window[cbName] = function() {}; // placeholder
+    window[cbName] = function() {};
     const script = document.createElement('script');
     script.id = 'sinaScript';
     script.src = `https://hq.sinajs.cn/rn=${Date.now()}&list=${codes.join(',')}`;
@@ -651,7 +673,6 @@ function fetchPricesFromSina(symbols, symbolToPool) {
           const raw = window['hq_str_' + code];
           if (raw) {
             const parts = raw.split(',');
-            // Sina futures format: [8]=latest, [7]=ask, [6]=bid, [3]=high, [4]=low, [2]=open, [5]=prev close
             const tries = [8,7,6,3,4,2,5];
             for (let j = 0; j < tries.length; j++) {
               const p = parseFloat(parts[tries[j]]);
@@ -671,16 +692,11 @@ function fetchPricesFromSina(symbols, symbolToPool) {
   });
 }
 
-// === Combined fetch: East Money → Sina → Manual ===
 async function fetchPricesNow() {
   const t0 = Date.now();
   setDataSourceStatus('loading', '数据源: 正在获取行情...');
-
-  // Reset status
   fetchStatusMap = {};
   state.pool.forEach(c => { fetchStatusMap[c.symbol] = 'manual'; });
-
-  // Step 1: East Money (primary) per symbol
   let emOk = 0, emFail = [];
   const emPending = [];
   state.pool.forEach(c => {
@@ -691,13 +707,9 @@ async function fetchPricesNow() {
         if (p) { c.price = p; fetchStatusMap[c.symbol] = 'ok'; emOk++; }
         else { emFail.push(c.symbol); }
       })());
-    } else {
-      emFail.push(c.symbol);
-    }
+    } else { emFail.push(c.symbol); }
   });
   await Promise.all(emPending);
-
-  // Step 2: Sina (backup for failed items)
   let sinaOk = 0;
   if (emOk < state.pool.length && emFail.length) {
     setDataSourceStatus('loading', `数据源: 东财${emOk}个成功, 尝试新浪备用...`);
@@ -712,14 +724,10 @@ async function fetchPricesNow() {
       sinaOk = sina.ok;
     }
   }
-
   const totalOk = emOk + sinaOk;
   const elapsed = Date.now() - t0;
-
   if (totalOk > 0) {
-    saveState();
-    renderPool();
-    onPriceUpdate();
+    saveState(); renderPool(); onPriceUpdate();
     const src = emOk > 0 ? '东财' : '新浪';
     setDataSourceStatus('online', `数据源: ${src}行情 (${totalOk}/${state.pool.length} 成功) · ${elapsed}ms`);
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN'));
@@ -729,7 +737,6 @@ async function fetchPricesNow() {
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN') + ' (失败)');
     showToast('行情获取失败，使用手动数据');
   }
-
   return {ok:totalOk, fail:state.pool.length - totalOk, total:state.pool.length};
 }
 
@@ -748,9 +755,7 @@ async function fetchPricesFromCustomApi() {
     }
     if (ok > 0) { saveState(); renderPool(); onPriceUpdate(); }
     return {ok, total: state.pool.length};
-  } catch(e) {
-    return {ok:0, total: state.pool.length};
-  }
+  } catch(e) { return {ok:0, total: state.pool.length}; }
 }
 
 function toggleAutoRefresh() {
@@ -799,7 +804,6 @@ function toggleTheme() {
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 function openModal(id) { document.getElementById(id).classList.add('show'); }
 
-// ============ TABS ============
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -815,7 +819,6 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// ============ POOL ============
 function renderPool() {
   const tbody = document.getElementById('poolBody');
   tbody.innerHTML = '';
@@ -824,6 +827,7 @@ function renderPool() {
     const [label, cls] = statusMap[c.status] || ['观望','tag-watch'];
     tbody.innerHTML += `<tr>
       <td><input value="${escapeHtml(c.symbol)}" onchange="state.pool[${i}].symbol=this.value;saveState()"></td>
+      <td><input value="${escapeHtml(c.contractCode||'')}" onchange="state.pool[${i}].contractCode=this.value;saveState()" style="width:80px" placeholder="如RB2609"></td>
       <td><input type="number" value="${c.multiplier}" onchange="state.pool[${i}].multiplier=+this.value;saveState()" style="width:70px"></td>
       <td><input type="number" value="${c.marginRate}" step="0.01" onchange="state.pool[${i}].marginRate=+this.value;saveState()" style="width:70px"></td>
       <td><input type="number" value="${c.price}" step="0.01" onchange="state.pool[${i}].price=+this.value;onPriceUpdate()" style="width:90px"></td>
@@ -840,9 +844,8 @@ function renderPool() {
 }
 
 function addPoolRow() {
-  state.pool.push({symbol:'新品种',multiplier:10,marginRate:0.08,price:0,percentile:50,costLine:0,status:'watch'});
-  renderPool();
-  saveState();
+  state.pool.push({symbol:'新品种',contractCode:'',multiplier:10,marginRate:0.08,price:0,percentile:50,costLine:0,status:'watch'});
+  renderPool(); saveState();
 }
 
 function savePool() { saveState(); showToast('观察池已保存'); }
@@ -850,7 +853,6 @@ function populateSymbolSelect(sel) {
   sel.innerHTML = state.pool.map(c=>`<option value="${escapeHtml(c.symbol)}">${escapeHtml(c.symbol)}</option>`).join('');
 }
 
-// ============ FUNDAMENTAL ============
 function populateFundSelect() {
   const sel = document.getElementById('fundSelect');
   sel.innerHTML = state.pool.map(c=>`<option value="${escapeHtml(c.symbol)}">${escapeHtml(c.symbol)}</option>`).join('');
@@ -880,7 +882,6 @@ function updateFund(sym, key, field, val) {
 
 function saveFundamental() { saveState(); showToast('基本面数据已保存'); }
 
-// ============ SIGNAL ENGINE ============
 function refreshSignals() {
   saveState();
   const tbody = document.getElementById('signalBody');
@@ -893,7 +894,6 @@ function refreshSignals() {
     const total = valScore + supplyScore + catalystScore;
     const maxTotal = 15;
     const ratio = total / maxTotal;
-
     let light, advice, isSweet;
     if (valScore >= 4 && supplyScore >= 4 && catalystScore >= 4) {
       light = '<span class="signal-light signal-green"></span><span class="signal-light signal-green"></span><span class="signal-light signal-green"></span>';
@@ -908,7 +908,6 @@ function refreshSignals() {
       advice = '观望等待';
       isSweet = false;
     }
-
     tbody.innerHTML += `<tr>
       <td>${escapeHtml(c.symbol)}</td>
       <td>${valScore}/5</td>
@@ -931,8 +930,80 @@ function isSweetSignal(symbol) {
   return valScore >= 4 && supplyScore >= 4 && catalystScore >= 4;
 }
 
-// ============ TRADING ENGINE ============
 let closeTradeIdx = -1;
+let rolloverTradeIdx = -1;
+
+function openRolloverModal(idx) {
+  rolloverTradeIdx = idx;
+  const t = state.trades[idx];
+  const c = state.pool.find(x=>x.symbol===t.symbol);
+  document.getElementById('rmOldContract').value = t.contractCode || '';
+  document.getElementById('rmNewContract').value = '';
+  document.getElementById('rmOldPrice').value = c ? c.price : t.price;
+  document.getElementById('rmNewPrice').value = '';
+  document.getElementById('rmNewStopLoss').value = '';
+  document.getElementById('rmCostInfo').textContent = '';
+  openModal('rolloverModal');
+  document.getElementById('rmOldPrice').onchange = calcRolloverCost;
+  document.getElementById('rmNewPrice').onchange = calcRolloverCost;
+}
+
+function calcRolloverCost() {
+  const t = state.trades[rolloverTradeIdx];
+  if (!t) return;
+  const oldPrice = +document.getElementById('rmOldPrice').value || 0;
+  const newPrice = +document.getElementById('rmNewPrice').value || 0;
+  if (!oldPrice || !newPrice) { document.getElementById('rmCostInfo').textContent = ''; return; }
+  const commRate = state.settings.commission / 10000;
+  const closeComm = oldPrice * t.multiplier * t.lots * commRate;
+  const openComm = newPrice * t.multiplier * t.lots * commRate;
+  const slipCost = state.settings.slippage * t.multiplier * t.lots * 2;
+  const totalCost = closeComm + openComm + slipCost;
+  document.getElementById('rmCostInfo').innerHTML = `移仓预估成本: 平仓手续费 ¥${closeComm.toFixed(2)} + 开仓手续费 ¥${openComm.toFixed(2)} + 滑点 ¥${slipCost.toFixed(2)} = <strong>¥${totalCost.toFixed(2)}</strong>`;
+}
+
+function submitRollover() {
+  if (rolloverTradeIdx < 0) return;
+  const t = state.trades[rolloverTradeIdx];
+  const newContract = document.getElementById('rmNewContract').value.trim();
+  const oldPrice = +document.getElementById('rmOldPrice').value;
+  const newPrice = +document.getElementById('rmNewPrice').value;
+  const newStopLoss = +document.getElementById('rmNewStopLoss').value;
+  if (!newContract) { showToast('请输入新合约代码'); return; }
+  if (!oldPrice || !newPrice || !newStopLoss) { showToast('请填写价格和止损价'); return; }
+  if (t.dir === 'long' && newStopLoss >= newPrice) { showToast('做多止损价应低于开仓价'); return; }
+  if (t.dir === 'short' && newStopLoss <= newPrice) { showToast('做空止损价应高于开仓价'); return; }
+  const commRate = state.settings.commission / 10000;
+  const closeComm = oldPrice * t.multiplier * t.lots * commRate;
+  const openComm = newPrice * t.multiplier * t.lots * commRate;
+  const slipCost = state.settings.slippage * t.multiplier * t.lots * 2;
+  const totalRolloverCost = closeComm + openComm + slipCost;
+  const grossPnl = t.dir === 'long' ? (oldPrice - t.price) * t.multiplier * t.lots : (t.price - oldPrice) * t.multiplier * t.lots;
+  const netPnl = grossPnl - (t.openCommission || 0) - closeComm - state.settings.slippage * t.multiplier * t.lots;
+  state.closedTrades.push({
+    symbol: t.symbol, contractCode: t.contractCode || '', dir: t.dir, lots: t.lots,
+    openPrice: t.price, closePrice: oldPrice, pnl: netPnl,
+    closeDate: new Date().toISOString().slice(0,10), isRollover: true
+  });
+  state.rolloverHistory.push({
+    date: new Date().toISOString().slice(0,10),
+    symbol: t.symbol, oldContract: t.contractCode || '', newContract: newContract,
+    lots: t.lots, dir: t.dir, oldClosePrice: oldPrice, newOpenPrice: newPrice,
+    rolloverCost: totalRolloverCost
+  });
+  const newMargin = newPrice * t.multiplier * t.marginRate * t.lots;
+  state.trades[rolloverTradeIdx] = {
+    symbol: t.symbol, contractCode: newContract, dir: t.dir, lots: t.lots,
+    price: newPrice, stopLoss: newStopLoss, margin: newMargin,
+    multiplier: t.multiplier, marginRate: t.marginRate,
+    openDate: new Date().toISOString().slice(0,10), openCommission: openComm
+  };
+  const poolItem = state.pool.find(x => x.symbol === t.symbol);
+  if (poolItem) poolItem.contractCode = newContract;
+  rolloverTradeIdx = -1;
+  saveState(); renderPool(); closeModal('rolloverModal'); renderTrades(); updateEquityHistory();
+  showToast(`已移仓至 ${newContract}，移仓成本 ¥${totalRolloverCost.toFixed(2)}`);
+}
 
 function openTradeModal() {
   populateSymbolSelect(document.getElementById('tmSymbol'));
@@ -961,13 +1032,10 @@ function calcTradeRisk() {
   const price = +document.getElementById('tmPrice').value || 0;
   const sl = +document.getElementById('tmStopLoss').value || 0;
   if (!price || !sl) { document.getElementById('tmRiskInfo').textContent=''; return; }
-
-  // Core risk = stop-loss distance × multiplier × lots
   const coreRisk = Math.abs(price - sl) * c.multiplier * lots;
   const margin = price * c.multiplier * c.marginRate * lots;
   const equity = Math.max(1, getCurrentEquity());
   const riskPct = (coreRisk / equity * 100).toFixed(2);
-
   const maxPct = isSweetSignal(sym) ? state.settings.maxRiskSweet : state.settings.maxRisk;
   const info = `止损风险: ¥${coreRisk.toFixed(0)} | 保证金: ¥${margin.toFixed(0)} | 风险占比: ${riskPct}%`;
   document.getElementById('tmRiskInfo').innerHTML = `<span style="color:${riskPct>maxPct?'var(--red)':'var(--green)'}">${info}</span>` +
@@ -984,31 +1052,23 @@ function submitTrade() {
   const sl = +document.getElementById('tmStopLoss').value;
   const dir = document.getElementById('tmDir').value;
   if (!price || !sl) { showToast('请填写开仓价和止损价'); return; }
-
-  // Validate stop loss direction
   if (dir === 'long' && sl >= price) { showToast('做多止损价应低于开仓价'); return; }
   if (dir === 'short' && sl <= price) { showToast('做空止损价应高于开仓价'); return; }
-
   const coreRisk = Math.abs(price - sl) * c.multiplier * lots;
   const equity = Math.max(1, getCurrentEquity());
   const riskPct = coreRisk / equity * 100;
   const maxPct = isSweetSignal(sym) ? state.settings.maxRiskSweet : state.settings.maxRisk;
-
   if (riskPct > maxPct) {
     if (!confirm(`⚠ 风险警告！\n\n单笔风险占比: ${riskPct.toFixed(2)}%\n允许上限: ${maxPct}%\n\n强制开仓将违反风控规则，确认继续？`)) return;
   }
-
   const margin = price * c.multiplier * c.marginRate * lots;
   const openCommission = price * c.multiplier * lots * (state.settings.commission / 10000);
   state.trades.push({
-    symbol: sym, dir, lots, price, stopLoss: sl, margin,
+    symbol: sym, contractCode: c.contractCode || '', dir, lots, price, stopLoss: sl, margin,
     multiplier: c.multiplier, marginRate: c.marginRate,
-    openDate: new Date().toISOString().slice(0,10),
-    openCommission
+    openDate: new Date().toISOString().slice(0,10), openCommission
   });
-  saveTrades();
-  closeModal('tradeModal');
-  renderTrades();
+  saveTrades(); closeModal('tradeModal'); renderTrades();
   showToast(`已开仓 ${sym} ${dir==='long'?'做多':'做空'} ${lots}手`);
 }
 
@@ -1029,48 +1089,44 @@ function renderTrades() {
     const riskPct = (riskBase / eq * 100).toFixed(2);
     tbody.innerHTML += `<tr>
       <td>${escapeHtml(t.symbol)}</td>
+      <td>${escapeHtml(t.contractCode||'-')}</td>
       <td style="color:${t.dir==='long'?'var(--green)':'var(--red)'}">${t.dir==='long'?'做多':'做空'}</td>
       <td>${t.lots}</td>
       <td>${t.price}</td>
       <td>${t.stopLoss}</td>
       <td>${curPrice}</td>
-      <td style="color:${pnlColor};font-weight:600">¥${netPnl.toFixed(0)}</td>
-      <td>¥${t.margin.toFixed(0)}</td>
+      <td style="color:${pnlColor};font-weight:600">${netPnl.toFixed(2)}</td>
+      <td>${t.margin?.toFixed(0)||'0'}</td>
       <td style="color:${riskPct>state.settings.maxRisk?'var(--red)':'var(--green)'}">${riskPct}%</td>
-      <td><button class="btn btn-danger btn-sm" onclick="openCloseModal(${i})">平仓</button></td>
+      <td><button class="btn btn-danger btn-sm" onclick="openCloseModal(${i})">平仓</button> <button class="btn btn-sm" style="background:var(--yellow);color:#000" onclick="openRolloverModal(${i})">移仓</button></td>
     </tr>`;
   });
   if (state.trades.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text2)">暂无持仓</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="color:var(--text2)">暂无持仓</td></tr>';
   }
-
-  // render closed
   const ctbody = document.getElementById('closedTradeBody');
   ctbody.innerHTML = '';
   state.closedTrades.forEach(t => {
     const pnlColor = t.pnl >= 0 ? 'var(--green)' : 'var(--red)';
     ctbody.innerHTML += `<tr>
       <td>${escapeHtml(t.symbol)}</td>
+      <td>${escapeHtml(t.contractCode||'-')}${t.isRollover?' <span style="font-size:10px;color:var(--yellow)">移仓</span>':''}</td>
       <td>${t.dir==='long'?'做多':'做空'}</td>
       <td>${t.lots}</td>
       <td>${t.openPrice}</td>
       <td>${t.closePrice}</td>
-      <td style="color:${pnlColor};font-weight:600">¥${t.pnl.toFixed(0)}</td>
+      <td style="color:${pnlColor};font-weight:600">${t.pnl?.toFixed(2)||'0.00'}</td>
       <td>${t.closeDate}</td>
     </tr>`;
   });
   if (state.closedTrades.length === 0) {
-    ctbody.innerHTML = '<tr><td colspan="7" style="color:var(--text2)">暂无记录</td></tr>';
+    ctbody.innerHTML = '<tr><td colspan="8" style="color:var(--text2)">暂无记录</td></tr>';
   }
-
-  // trade-level risk alert
   const alertDiv = document.getElementById('tradeAlert');
   const totalRiskPct = totalMargin > 0 ? (totalMargin / Math.max(1, getCurrentEquity()) * 100) : 0;
   if (totalRiskPct > 80) {
     alertDiv.innerHTML = `<div class="alert-box">⚠ 保证金占用已达 ${totalRiskPct.toFixed(1)}%，接近满仓，请控制仓位！</div>`;
-  } else {
-    alertDiv.innerHTML = '';
-  }
+  } else { alertDiv.innerHTML = ''; }
 }
 
 function openCloseModal(idx) {
@@ -1086,23 +1142,18 @@ function submitClose() {
   const t = state.trades[closeTradeIdx];
   const closePrice = +document.getElementById('cmPrice').value;
   if (!closePrice) { showToast('请填写平仓价'); return; }
-
   const grossPnl = t.dir==='long' ? (closePrice - t.price) * t.multiplier * t.lots : (t.price - closePrice) * t.multiplier * t.lots;
   const openComm = t.openCommission || (t.price * t.multiplier * t.lots * (state.settings.commission / 10000));
   const closeComm = closePrice * t.multiplier * t.lots * (state.settings.commission / 10000);
   const slipCost = state.settings.slippage * t.multiplier * t.lots;
   const netPnl = grossPnl - openComm - closeComm - slipCost;
-
   state.closedTrades.push({
     symbol: t.symbol, dir: t.dir, lots: t.lots, openPrice: t.price, closePrice,
     pnl: netPnl, closeDate: new Date().toISOString().slice(0,10)
   });
   state.trades.splice(closeTradeIdx, 1);
   closeTradeIdx = -1;
-  saveTrades();
-  closeModal('closeModal');
-  renderTrades();
-  updateEquityHistory();
+  saveTrades(); closeModal('closeModal'); renderTrades(); updateEquityHistory();
   showToast('已平仓');
 }
 
@@ -1132,7 +1183,6 @@ function onPriceUpdate() {
   if (document.getElementById('tab-dashboard').classList.contains('active')) renderDashboard();
 }
 
-// ============ JOURNAL ============
 function openJournalModal() {
   populateSymbolSelect(document.getElementById('jmSymbol'));
   document.getElementById('jmLogic').value = '';
@@ -1152,9 +1202,7 @@ function submitJournal() {
     review: document.getElementById('jmReview').value
   };
   state.journal.unshift(entry);
-  saveState();
-  closeModal('journalModal');
-  renderJournal();
+  saveState(); closeModal('journalModal'); renderJournal();
   showToast('日志已保存');
 }
 
@@ -1179,16 +1227,12 @@ function renderJournal() {
   }).join('');
 }
 
-// ============ DASHBOARD ============
 function updateEquityHistory() {
   const today = new Date().toISOString().slice(0,10);
   const eq = getCurrentEquity();
   const last = state.equityHistory[state.equityHistory.length-1];
-  if (last && last.date === today) {
-    last.equity = eq;
-  } else {
-    state.equityHistory.push({date: today, equity: eq});
-  }
+  if (last && last.date === today) { last.equity = eq; }
+  else { state.equityHistory.push({date: today, equity: eq}); }
   saveState();
 }
 
@@ -1198,16 +1242,12 @@ function renderDashboard() {
   const initEq = state.settings.initEquity;
   const target = state.settings.target;
   const totalReturn = ((equity - initEq) / initEq * 100).toFixed(2);
-
-  // max drawdown
   let peak = 0, maxDD = 0;
   state.equityHistory.forEach(h => {
     if (h.equity > peak) peak = h.equity;
     const dd = (peak - h.equity) / peak * 100;
     if (dd > maxDD) maxDD = dd;
   });
-
-  // win rate & profit factor
   let wins = 0, losses = 0, totalWin = 0, totalLoss = 0;
   state.closedTrades.forEach(t => {
     if (t.pnl >= 0) { wins++; totalWin += t.pnl; }
@@ -1216,18 +1256,10 @@ function renderDashboard() {
   const totalTrades = wins + losses;
   const winRate = totalTrades ? (wins/totalTrades*100).toFixed(1) : '0.0';
   const pf = totalLoss > 0 ? (totalWin/totalLoss).toFixed(2) : totalWin > 0 ? '∞' : '-';
-
-  // discipline rate
   let discYes = 0, discTotal = 0;
-  state.journal.forEach(j => {
-    discTotal++;
-    if (j.discipline === 'yes') discYes++;
-  });
+  state.journal.forEach(j => { discTotal++; if (j.discipline === 'yes') discYes++; });
   const discRate = discTotal ? (discYes/discTotal*100).toFixed(0) : '-';
-
-  // progress
   const progress = Math.min(100, Math.max(0, ((equity - initEq) / (target - initEq) * 100))).toFixed(1);
-
   document.getElementById('statsGrid').innerHTML = `
     <div class="stat-card"><div class="value">¥${equity.toFixed(0)}</div><div class="label">当前权益</div></div>
     <div class="stat-card"><div class="value" style="color:${totalReturn>=0?'var(--green)':'var(--red)'}">${totalReturn}%</div><div class="label">累计收益率</div></div>
@@ -1238,13 +1270,9 @@ function renderDashboard() {
     <div class="stat-card"><div class="value" style="color:var(--accent)">${discRate}%</div><div class="label">纪律执行率</div></div>
     <div class="stat-card"><div class="value">${progress}%</div><div class="label">距100万进度</div></div>
   `;
-
-  // progress bar
   const pf2 = document.getElementById('progressFill');
   pf2.style.width = Math.max(0, Math.min(100, progress)) + '%';
   pf2.textContent = progress + '%';
-
-  // risk alert
   const alertDiv = document.getElementById('riskAlert');
   let alertHtml = '';
   if (maxDD >= state.settings.drawdownWarn) {
@@ -1256,9 +1284,29 @@ function renderDashboard() {
     alertHtml += `<div class="alert-box">⚠ 仓位预警：保证金占用 ${marginPct.toFixed(1)}%，接近满仓！</div>`;
   }
   alertDiv.innerHTML = alertHtml;
-
-  // draw chart
   drawEquityChart();
+  renderRolloverHistory();
+}
+
+function renderRolloverHistory() {
+  const el = document.getElementById('rolloverHistoryTable');
+  if (!el) return;
+  if (state.rolloverHistory.length === 0) {
+    el.innerHTML = '<div class="empty-state">暂无移仓记录</div>';
+    return;
+  }
+  el.innerHTML = `<table style="font-size:12px"><thead><tr>
+    <th>日期</th><th>品种</th><th>旧合约</th><th>新合约</th><th>方向</th><th>手数</th><th>移仓成本</th>
+  </tr></thead><tbody>` + state.rolloverHistory.map((r, i) => `
+    <tr>
+      <td>${escapeHtml(r.date)}</td>
+      <td>${escapeHtml(r.symbol)}</td>
+      <td>${escapeHtml(r.oldContract)}</td>
+      <td>${escapeHtml(r.newContract)}</td>
+      <td style="color:${r.dir==='long'?'var(--green)':'var(--red)'}">${r.dir==='long'?'做多':'做空'}</td>
+      <td>${r.lots}</td>
+      <td style="color:var(--yellow)">¥${r.rolloverCost.toFixed(2)}</td>
+    </tr>`).join('') + '</tbody></table>';
 }
 
 function drawEquityChart() {
@@ -1266,13 +1314,10 @@ function drawEquityChart() {
   const ctx = canvas.getContext('2d');
   const w = canvas.parentElement.clientWidth - 32;
   const h = 280;
-  canvas.width = w * 2;
-  canvas.height = h * 2;
-  canvas.style.width = w + 'px';
-  canvas.style.height = h + 'px';
+  canvas.width = w * 2; canvas.height = h * 2;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
   ctx.scale(2, 2);
   ctx.clearRect(0, 0, w, h);
-
   const data = state.equityHistory;
   if (data.length < 2) {
     ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text2');
@@ -1281,30 +1326,23 @@ function drawEquityChart() {
     ctx.fillText('需要至少2个数据点才能绘制资金曲线', w/2, h/2);
     return;
   }
-
   const pad = {top:20, right:20, bottom:30, left:60};
   const cw = w - pad.left - pad.right;
   const ch = h - pad.top - pad.bottom;
-
   const vals = data.map(d=>d.equity);
   const minV = Math.min(...vals) * 0.95;
   const maxV = Math.max(...vals) * 1.05;
   const range = maxV - minV || 1;
-
   const textColor = getComputedStyle(document.body).getPropertyValue('--text2');
   const accentColor = getComputedStyle(document.body).getPropertyValue('--accent');
   const gridColor = getComputedStyle(document.body).getPropertyValue('--border');
-
-  ctx.strokeStyle = gridColor;
-  ctx.lineWidth = 0.5;
+  ctx.strokeStyle = gridColor; ctx.lineWidth = 0.5;
   for (let i = 0; i <= 4; i++) {
     const y = pad.top + ch * (1 - i/4);
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left+cw, y); ctx.stroke();
     ctx.fillStyle = textColor; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
     ctx.fillText('¥'+(minV + range*i/4).toFixed(0), pad.left-5, y+4);
   }
-
-  // x labels
   const step = Math.max(1, Math.floor(data.length / 6));
   ctx.textAlign = 'center';
   data.forEach((d, i) => {
@@ -1314,10 +1352,7 @@ function drawEquityChart() {
       ctx.fillText(d.date.slice(5), x, h - 5);
     }
   });
-
-  // line
-  ctx.strokeStyle = accentColor;
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = accentColor; ctx.lineWidth = 2;
   ctx.beginPath();
   data.forEach((d, i) => {
     const x = pad.left + (i/(data.length-1)) * cw;
@@ -1325,8 +1360,6 @@ function drawEquityChart() {
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   });
   ctx.stroke();
-
-  // fill
   const lastX = pad.left + cw;
   const lastY = pad.top + ch * (1 - (data[data.length-1].equity - minV)/range);
   ctx.lineTo(lastX, pad.top + ch);
@@ -1338,7 +1371,6 @@ function drawEquityChart() {
   ctx.globalAlpha = 1.0;
 }
 
-// ============ SETTINGS ============
 function loadSettings() {
   const s = state.settings;
   document.getElementById('setInitEquity').value = s.initEquity;
@@ -1371,7 +1403,6 @@ function saveSettings() {
     dataSource: document.getElementById('setDataSource').value,
     apiUrl: document.getElementById('setApiUrl').value
   };
-  // If initial equity changed, adjust equityHistory baseline proportionally
   if (oldInit !== state.settings.initEquity && state.equityHistory.length > 0) {
     const ratio = state.settings.initEquity / oldInit;
     state.equityHistory = state.equityHistory.map(h => ({date: h.date, equity: h.equity * ratio}));
@@ -1380,7 +1411,6 @@ function saveSettings() {
   showToast('设置已保存');
 }
 
-// ============ INIT ============
 function init() {
   const theme = localStorage.getItem('futures_theme');
   if (theme) document.documentElement.setAttribute('data-theme', theme);
@@ -1398,14 +1428,9 @@ function init() {
   initAutoRefresh();
   initAutoBackup();
   updateBackupDisplay();
-
-  // listen for storage changes from other tabs
   window.addEventListener('storage', (e) => {
     if (e.key === 'futures_tracker_state') {
-      loadState();
-      renderPool();
-      renderTrades();
-      renderJournal();
+      loadState(); renderPool(); renderTrades(); renderJournal();
     }
   });
 }
