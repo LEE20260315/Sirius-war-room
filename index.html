@@ -303,7 +303,7 @@ input:checked + .slider:before { transform:translateX(16px); background:#fff; }
     </div>
     <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
-      <button class="btn btn-danger" onclick="if(confirm('确认重置所有数据？')){localStorage.clear();location.reload()}">重置全部数据</button>
+      <button class="btn btn-danger" onclick="if(confirm('确认重置所有数据？')){['futures_tracker_state','futures_auto_refresh','futures_refresh_interval','futures_theme','futures_auto_backup'].forEach(k=>localStorage.removeItem(k));location.reload()}">重置全部数据</button>
       <button class="btn btn-primary" onclick="exportData()">导出数据</button>
       <button class="btn btn-primary" onclick="importData()">导入数据</button>
     </div>
@@ -315,7 +315,7 @@ input:checked + .slider:before { transform:translateX(16px); background:#fff; }
     <div class="info-box">
       本系统为纯静态页面，所有观察池、交易、日志、资金曲线数据均保存在当前浏览器的 <strong>localStorage</strong> 中。<br>
       换浏览器、清除缓存、隐私模式、重装系统都会导致数据丢失。<br>
-      <strong>请定期点击“导出数据”备份到本地 JSON 文件</strong>；如遇重要操作，系统也会自动提示备份。
+      <strong>请定期点击"导出数据"备份到本地 JSON 文件</strong>；如遇重要操作，系统也会自动提示备份。
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="exportData()">立即导出备份</button>
@@ -474,6 +474,11 @@ function saveState() {
   updateHeaderStats();
 }
 
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // ============ PERSISTENCE BACKUP ============
 function exportData() {
   const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
@@ -495,6 +500,10 @@ function handleImport(e) {
   reader.onload = function(ev) {
     try {
       const data = JSON.parse(ev.target.result);
+      if (!validateImportData(data)) {
+        showToast('导入失败：数据格式不正确');
+        return;
+      }
       state = {...state, ...data};
       saveState();
       showToast('数据已导入，刷新页面');
@@ -502,6 +511,18 @@ function handleImport(e) {
     } catch(err) { showToast('导入失败：文件格式错误'); }
   };
   reader.readAsText(file);
+}
+
+function validateImportData(data) {
+  if (!data || typeof data !== 'object') return false;
+  if (data.pool && !Array.isArray(data.pool)) return false;
+  if (data.trades && !Array.isArray(data.trades)) return false;
+  if (data.closedTrades && !Array.isArray(data.closedTrades)) return false;
+  if (data.journal && !Array.isArray(data.journal)) return false;
+  if (data.equityHistory && !Array.isArray(data.equityHistory)) return false;
+  if (data.settings && typeof data.settings !== 'object') return false;
+  if (data.fundamentals && typeof data.fundamentals !== 'object') return false;
+  return true;
 }
 
 function updateBackupDisplay() {
@@ -802,13 +823,13 @@ function renderPool() {
     const statusMap = {bottom:['磨底','tag-bottom'],reversal:['反转信号','tag-reversal'],watch:['观望','tag-watch']};
     const [label, cls] = statusMap[c.status] || ['观望','tag-watch'];
     tbody.innerHTML += `<tr>
-      <td><input value="${c.symbol}" onchange="state.pool[${i}].symbol=this.value"></td>
-      <td><input type="number" value="${c.multiplier}" onchange="state.pool[${i}].multiplier=+this.value" style="width:70px"></td>
-      <td><input type="number" value="${c.marginRate}" step="0.01" onchange="state.pool[${i}].marginRate=+this.value" style="width:70px"></td>
+      <td><input value="${escapeHtml(c.symbol)}" onchange="state.pool[${i}].symbol=this.value;saveState()"></td>
+      <td><input type="number" value="${c.multiplier}" onchange="state.pool[${i}].multiplier=+this.value;saveState()" style="width:70px"></td>
+      <td><input type="number" value="${c.marginRate}" step="0.01" onchange="state.pool[${i}].marginRate=+this.value;saveState()" style="width:70px"></td>
       <td><input type="number" value="${c.price}" step="0.01" onchange="state.pool[${i}].price=+this.value;onPriceUpdate()" style="width:90px"></td>
-      <td><input type="number" value="${c.percentile}" min="0" max="100" onchange="state.pool[${i}].percentile=+this.value" style="width:60px">%</td>
-      <td><input type="number" value="${c.costLine}" step="0.01" onchange="state.pool[${i}].costLine=+this.value" style="width:90px"></td>
-      <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c.status==='bottom'?'var(--green)':c.status==='reversal'?'var(--yellow)':'var(--red)'};vertical-align:middle;margin-right:4px"></span><select onchange="state.pool[${i}].status=this.value">
+      <td><input type="number" value="${c.percentile}" min="0" max="100" onchange="state.pool[${i}].percentile=+this.value;saveState()" style="width:60px">%</td>
+      <td><input type="number" value="${c.costLine}" step="0.01" onchange="state.pool[${i}].costLine=+this.value;saveState()" style="width:90px"></td>
+      <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c.status==='bottom'?'var(--green)':c.status==='reversal'?'var(--yellow)':'var(--red)'};vertical-align:middle;margin-right:4px"></span><select onchange="state.pool[${i}].status=this.value;saveState()">
         <option value="bottom" ${c.status==='bottom'?'selected':''}>磨底</option>
         <option value="reversal" ${c.status==='reversal'?'selected':''}>反转信号</option>
         <option value="watch" ${c.status==='watch'?'selected':''}>观望</option>
@@ -821,17 +842,18 @@ function renderPool() {
 function addPoolRow() {
   state.pool.push({symbol:'新品种',multiplier:10,marginRate:0.08,price:0,percentile:50,costLine:0,status:'watch'});
   renderPool();
+  saveState();
 }
 
 function savePool() { saveState(); showToast('观察池已保存'); }
 function populateSymbolSelect(sel) {
-  sel.innerHTML = state.pool.map(c=>`<option value="${c.symbol}">${c.symbol}</option>`).join('');
+  sel.innerHTML = state.pool.map(c=>`<option value="${escapeHtml(c.symbol)}">${escapeHtml(c.symbol)}</option>`).join('');
 }
 
 // ============ FUNDAMENTAL ============
 function populateFundSelect() {
   const sel = document.getElementById('fundSelect');
-  sel.innerHTML = state.pool.map(c=>`<option value="${c.symbol}">${c.symbol}</option>`).join('');
+  sel.innerHTML = state.pool.map(c=>`<option value="${escapeHtml(c.symbol)}">${escapeHtml(c.symbol)}</option>`).join('');
 }
 
 function loadFundamental() {
@@ -853,6 +875,7 @@ function updateFund(sym, key, field, val) {
   if (!state.fundamentals[sym]) state.fundamentals[sym] = {};
   if (!state.fundamentals[sym][key]) state.fundamentals[sym][key] = {};
   state.fundamentals[sym][key][field] = val;
+  saveState();
 }
 
 function saveFundamental() { saveState(); showToast('基本面数据已保存'); }
@@ -887,13 +910,13 @@ function refreshSignals() {
     }
 
     tbody.innerHTML += `<tr>
-      <td>${c.symbol}</td>
+      <td>${escapeHtml(c.symbol)}</td>
       <td>${valScore}/5</td>
       <td>${supplyScore}/5</td>
       <td>${catalystScore}/5</td>
       <td>${total}/${maxTotal}</td>
       <td>${light}</td>
-      <td style="font-weight:600;color:${advice.includes('甜点')?'var(--green)':advice.includes('轻仓')?'var(--yellow)':'var(--red)'}">${advice}</td>
+      <td style="font-weight:600;color:${advice.includes('甜点')?'var(--green)':advice.includes('轻仓')?'var(--yellow)':'var(--red)'}">${escapeHtml(advice)}</td>
     </tr>`;
   });
 }
@@ -1005,7 +1028,7 @@ function renderTrades() {
     const eq = Math.max(1, getCurrentEquity());
     const riskPct = (riskBase / eq * 100).toFixed(2);
     tbody.innerHTML += `<tr>
-      <td>${t.symbol}</td>
+      <td>${escapeHtml(t.symbol)}</td>
       <td style="color:${t.dir==='long'?'var(--green)':'var(--red)'}">${t.dir==='long'?'做多':'做空'}</td>
       <td>${t.lots}</td>
       <td>${t.price}</td>
@@ -1027,7 +1050,7 @@ function renderTrades() {
   state.closedTrades.forEach(t => {
     const pnlColor = t.pnl >= 0 ? 'var(--green)' : 'var(--red)';
     ctbody.innerHTML += `<tr>
-      <td>${t.symbol}</td>
+      <td>${escapeHtml(t.symbol)}</td>
       <td>${t.dir==='long'?'做多':'做空'}</td>
       <td>${t.lots}</td>
       <td>${t.openPrice}</td>
@@ -1146,11 +1169,11 @@ function renderJournal() {
     const [dLabel, dColor] = discMap[j.discipline] || discMap.yes;
     return `<div class="card" style="margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div><strong>${j.symbol}</strong> · ${j.dir==='long'?'做多':'做空'} · ${j.date}</div>
+        <div><strong>${escapeHtml(j.symbol)}</strong> · ${j.dir==='long'?'做多':'做空'} · ${escapeHtml(j.date)}</div>
         <div style="color:${dColor};font-weight:600">${dLabel}</div>
       </div>
-      <div style="margin-top:8px;font-size:13px"><strong>开仓逻辑:</strong> ${j.logic||'未填写'}</div>
-      <div style="margin-top:4px;font-size:13px"><strong>复盘:</strong> ${j.review||'未填写'}</div>
+      <div style="margin-top:8px;font-size:13px"><strong>开仓逻辑:</strong> ${escapeHtml(j.logic||'未填写')}</div>
+      <div style="margin-top:4px;font-size:13px"><strong>复盘:</strong> ${escapeHtml(j.review||'未填写')}</div>
       <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="state.journal.splice(${i},1);saveState();renderJournal()">删除</button>
     </div>`;
   }).join('');
