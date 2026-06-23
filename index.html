@@ -506,11 +506,17 @@ function loadState() {
     }
   } catch(e) {
     state.pool = JSON.parse(JSON.stringify(DEFAULT_COMMODITIES));
+    state.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
   }
 }
 
 function saveState() {
-  localStorage.setItem('futures_tracker_state', JSON.stringify(state));
+  try {
+    localStorage.setItem('futures_tracker_state', JSON.stringify(state));
+  } catch (e) {
+    console.warn('保存到 localStorage 失败:', e);
+    showToast('本地保存失败：浏览器可能处于隐私模式或空间不足');
+  }
   updateHeaderStats();
 }
 
@@ -808,6 +814,7 @@ function updateRefreshInterval() {
 
 function startAutoRefresh() {
   stopAutoRefresh();
+  if (document.hidden) return; // 后台标签页不启动
   const sec = parseInt(document.getElementById('refreshInterval').value) || 60;
   autoRefreshTimer = setInterval(fetchPricesNow, sec * 1000);
 }
@@ -816,12 +823,23 @@ function stopAutoRefresh() {
   if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
 }
 
+function handleVisibilityChange() {
+  const on = localStorage.getItem('futures_auto_refresh') === '1';
+  if (document.hidden) {
+    stopAutoRefresh();
+  } else if (on) {
+    startAutoRefresh();
+    fetchPricesNow();
+  }
+}
+
 function initAutoRefresh() {
   const on = localStorage.getItem('futures_auto_refresh') === '1';
   const interval = localStorage.getItem('futures_refresh_interval') || '60';
   document.getElementById('autoRefreshToggle').checked = on;
   document.getElementById('refreshInterval').value = interval;
   if (on) { startAutoRefresh(); fetchPricesNow(); }
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 }
 
 function showToast(msg) {
@@ -905,11 +923,15 @@ function loadFundamental() {
   tbody.innerHTML = '';
   FUND_DIMENSIONS.forEach(d => {
     const v = data[d.key] || {content:'',score:3};
-    tbody.innerHTML += `<tr>
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
       <td style="text-align:left;font-weight:500;min-width:120px">${d.label}</td>
-      <td><textarea onchange="updateFund('${sym}','${d.key}','content',this.value)">${v.content||''}</textarea></td>
-      <td><input type="number" min="1" max="5" value="${v.score||3}" style="width:60px" onchange="updateFund('${sym}','${d.key}','score',+this.value)"></td>
-    </tr>`;
+      <td><textarea class="fund-content" data-key="${d.key}">${v.content||''}</textarea></td>
+      <td><input type="number" class="fund-score" data-key="${d.key}" min="1" max="5" value="${v.score||3}" style="width:60px"></td>
+    `;
+    tr.querySelector('.fund-content').addEventListener('change', e => updateFund(sym, d.key, 'content', e.target.value));
+    tr.querySelector('.fund-score').addEventListener('change', e => updateFund(sym, d.key, 'score', +e.target.value));
+    tbody.appendChild(tr);
   });
 }
 
@@ -1206,7 +1228,7 @@ function submitRollover() {
     review: ''
   });
   saveState();
-  updateEquityHistory(true);
+  updateEquityHistory();
   renderPool();
   closeModal('rolloverModal');
   renderTrades();
@@ -1280,11 +1302,12 @@ function submitTrade() {
 
   const margin = price * c.multiplier * c.marginRate * lots;
   const openCommission = price * c.multiplier * lots * (state.settings.commission / 10000);
+  const openSlipCost = state.settings.slippage * c.multiplier * lots;
   state.trades.push({
     symbol: sym, contractCode: c.contractCode || '', dir, lots, price, stopLoss: sl, margin,
     multiplier: c.multiplier, marginRate: c.marginRate,
     openDate: new Date().toISOString().slice(0,10),
-    openCommission
+    openCommission, openSlipCost
   });
   // 自动记录交易日志
   state.journal.unshift({
@@ -1297,7 +1320,7 @@ function submitTrade() {
     review: ''
   });
   saveTrades();
-  updateEquityHistory(true);
+  updateEquityHistory();
   closeModal('tradeModal');
   renderTrades();
   renderJournal();
@@ -1384,12 +1407,13 @@ function submitClose() {
   const grossPnl = t.dir==='long' ? (closePrice - t.price) * t.multiplier * t.lots : (t.price - closePrice) * t.multiplier * t.lots;
   const openComm = t.openCommission || (t.price * t.multiplier * t.lots * (state.settings.commission / 10000));
   const closeComm = closePrice * t.multiplier * t.lots * (state.settings.commission / 10000);
-  const slipCost = state.settings.slippage * t.multiplier * t.lots;
-  const netPnl = grossPnl - openComm - closeComm - slipCost;
+  const openSlip = t.openSlipCost || 0;
+  const closeSlip = state.settings.slippage * t.multiplier * t.lots;
+  const netPnl = grossPnl - openComm - closeComm - openSlip - closeSlip;
 
   state.closedTrades.push({
-    symbol: t.symbol, dir: t.dir, lots: t.lots, openPrice: t.price, closePrice,
-    pnl: netPnl, closeDate: new Date().toISOString().slice(0,10)
+    symbol: t.symbol, contractCode: t.contractCode || '', dir: t.dir, lots: t.lots, openPrice: t.price, closePrice,
+    pnl: netPnl, closeDate: new Date().toISOString().slice(0,10), isRollover: false
   });
   // 自动记录交易日志
   const pnlStr = netPnl >= 0 ? `盈利 ¥${netPnl.toFixed(2)}` : `亏损 ¥${Math.abs(netPnl).toFixed(2)}`;
@@ -1405,7 +1429,7 @@ function submitClose() {
   state.trades.splice(closeTradeIdx, 1);
   closeTradeIdx = -1;
   saveTrades();
-  updateEquityHistory(true);
+  updateEquityHistory();
   closeModal('closeModal');
   renderTrades();
   renderJournal();
@@ -1487,11 +1511,11 @@ function renderJournal() {
 }
 
 // ============ DASHBOARD ============
-function updateEquityHistory(forceNew) {
+function updateEquityHistory() {
   const today = new Date().toISOString().slice(0,10);
   const eq = getCurrentEquity();
   const last = state.equityHistory[state.equityHistory.length-1];
-  if (forceNew || !last || last.date !== today) {
+  if (!last || last.date !== today) {
     state.equityHistory.push({date: today, equity: eq});
   } else {
     last.equity = eq;
