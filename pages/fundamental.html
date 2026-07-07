@@ -1,1 +1,311 @@
-placeholder
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>期货模拟盘 - 基本面</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Lora:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style id="theme-vars">
+/* === Claude Design System - Colors & Type === */
+/* Font Families */
+--font-display: 'Newsreader', Georgia, ui-serif, serif;
+--font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+--font-serif: 'Lora', Georgia, ui-serif, serif;
+--font-mono: 'Geist Mono', ui-monospace, monospace;
+
+/* Brand Colors */
+--color-brand-50: #3a2a22;
+--color-brand-100: #4d3528;
+--color-brand-200: #6b4533;
+--color-brand-300: #8a5740;
+--color-brand-400: #b0683f;
+--color-brand-500: #d97757;
+--color-brand-600: #e08d6f;
+--color-brand-700: #e8a98f;
+--color-brand-800: #f0c6b3;
+--color-brand-900: #f8e3d8;
+
+/* Surface Colors */
+--color-surface-base: #1b1b19;
+--color-surface-dim: #262624;
+--color-surface: #2c2c2b;
+--color-surface-elevated: #30302e;
+--color-surface-hover: #3e3e38;
+--color-surface-muted: #4a4a43;
+
+/* Ink (Text) Colors */
+--color-ink: #faf9f5;
+--color-ink-secondary: #d8d6cd;
+--color-ink-muted: #b7b5a9;
+--color-ink-dim: #908e84;
+--color-ink-faint: #6e6d68;
+--color-ink-label: #46443b;
+
+/* Edge (Border) Colors */
+--color-edge: #4a4a43;
+--color-edge-subtle: #3e3e38;
+--color-edge-faint: #343430;
+--color-edge-divider: #2c2c2b;
+--color-edge-primary: #908e84;
+
+/* Semantic Colors */
+--color-success: #8ca06f;
+--color-success-bg: #232a1c;
+--color-success-border: #556640;
+--color-error: #ef4444;
+--color-error-bg: #3a1f1f;
+--color-error-border: #93302f;
+--color-warning: #fdd835;
+
+/* Chart Colors */
+--color-chart-1: #b05730;
+--color-chart-2: #9c87f5;
+--color-chart-3: #1a1915;
+--color-chart-4: #2f2b48;
+--color-chart-5: #b4552d;
+
+/* Border Radius */
+--radius-sm: 8px;
+--radius-md: 12px;
+--radius-lg: 16px;
+--radius-xl: 20px;
+--radius-2xl: 24px;
+--radius-full: 9999px;
+
+/* Shadows */
+--shadow-xs: 0 1px 3px 0 rgba(0,0,0,0.05);
+--shadow-sm: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1);
+--shadow-md: 0 1px 3px 0 rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.1);
+--shadow-lg: 0 1px 3px 0 rgba(0,0,0,0.1), 0 4px 6px -1px rgba(0,0,0,0.1);
+--shadow-xl: 0 1px 3px 0 rgba(0,0,0,0.1), 0 8px 10px -1px rgba(0,0,0,0.1);
+
+/* Legacy aliases for JS compatibility */
+--bg: #1b1b19;
+--bg2: #2c2c2b;
+--bg3: #30302e;
+--text: #faf9f5;
+--text2: #b7b5a9;
+--border: #4a4a43;
+--accent: #d97757;
+--green: #8ca06f;
+--yellow: #fdd835;
+--red: #ef4444;
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-brand-50: #3a2a22; --color-brand-100: #4d3528; --color-brand-200: #6b4533; --color-brand-300: #8a5740;
+    --color-brand-400: #b0683f; --color-brand-500: #d97757; --color-brand-600: #e08d6f; --color-brand-700: #e8a98f;
+    --color-brand-800: #f0c6b3; --color-brand-900: #f8e3d8;
+    --color-surface: #2c2c2b; --color-surface-base: #1b1b19; --color-surface-dim: #262624; --color-surface-elevated: #30302e;
+    --color-surface-hover: #3e3e38; --color-surface-muted: #4a4a43;
+    --color-ink: #faf9f5; --color-ink-secondary: #d8d6cd; --color-ink-muted: #b7b5a9; --color-ink-dim: #908e84;
+    --color-ink-faint: #6e6d68; --color-ink-label: #46443b;
+    --color-edge: #4a4a43; --color-edge-subtle: #3e3e38; --color-edge-faint: #343430; --color-edge-divider: #2c2c2b;
+    --color-edge-primary: #908e84;
+    --color-success: #8ca06f; --color-success-bg: #232a1c; --color-success-border: #556640;
+    --color-error: #ef4444; --color-error-bg: #3a1f1f; --color-error-border: #93302f;
+    --color-warning: #fdd835;
+    --color-chart-1: #b05730; --color-chart-2: #9c87f5; --color-chart-3: #1a1915; --color-chart-4: #2f2b48; --color-chart-5: #b4552d;
+    --color-background: var(--bg); --color-foreground: var(--text);
+    --color-primary: var(--accent); --color-border: var(--border);
+    --font-family-display: 'Newsreader', Georgia, ui-serif, serif;
+    --font-family-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+    --font-family-serif: 'Lora', Georgia, ui-serif, serif;
+    --font-family-mono: 'Geist Mono', ui-monospace, monospace;
+    --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 20px; --radius-2xl: 24px; --radius-full: 9999px;
+    --shadow-xs: 0 1px 3px 0 rgba(0,0,0,0.05); --shadow-sm: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1);
+    --shadow-md: 0 1px 3px 0 rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.1); --shadow-lg: 0 1px 3px 0 rgba(0,0,0,0.1), 0 4px 6px -1px rgba(0,0,0,0.1);
+    --shadow-xl: 0 1px 3px 0 rgba(0,0,0,0.1), 0 8px 10px -1px rgba(0,0,0,0.1);
+  }
+  @layer base {
+    body { background: var(--color-surface-base); color: var(--color-ink); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="bg-surface-base text-ink font-sans min-h-screen">
+<div id="toast" class="toast"></div>
+<div class="bg-error-bg border-b border-error text-error text-center py-2 px-4 text-xs font-medium tracking-wider font-sans">
+  本系统为模拟盘，非投资建议，期货交易高风险
+</div>
+<header class="bg-surface-elevated border-b border-edge-divider px-5 py-3 flex items-center justify-between">
+  <h1 class="font-display text-lg text-brand-500 font-medium tracking-tight">
+    小资金商品期货 <span class="text-ink-muted font-serif italic">模拟盘跟踪系统</span>
+  </h1>
+  <div class="flex items-center gap-4 text-sm text-ink-muted">
+    <span>起始: <span id="headerInitEquity" class="text-ink font-mono">15,000</span> | 目标: <span id="headerTarget" class="text-ink font-mono">1,000,000</span></span>
+    <button class="bg-surface-muted text-ink-muted px-3 py-1.5 rounded-sm text-xs font-medium border border-edge-subtle hover:bg-surface-hover hover:text-ink transition-colors" onclick="FTApp.toggleTheme()">切换主题</button>
+    </div>
+</header>
+<div class="auto-refresh-bar bg-surface border-b border-edge-divider px-5 py-1.5 flex items-center justify-between flex-wrap:wrap gap:2 text-xs text-ink-muted">
+  <div class="flex items-center gap-4 flex-wrap:wrap">
+    <label class="flex items-center gap-1.5 cursor-pointer">
+      <span>自动刷新</span>
+      <label class="switch"><input type="checkbox" id="autoRefreshToggle" onchange="FTApp.toggleAutoRefresh()"><span class="slider"></span></label>
+    </label>
+    <span>间隔: <select id="refreshInterval" onchange="FTApp.updateRefreshInterval()" class="p-0.5 border border-edge rounded text-xs bg-surface text-ink"><option value="30">30秒</option><option value="60" selected>60秒</option><option value="120">2分钟</option><option value="300">5分钟</option></select></span>
+    <span id="dataSourceStatus"><span class="status-dot offline"></span>数据源: 手动模式</span>
+    <span id="lastUpdateTime">最近更新: --</span>
+  </div>
+  <button class="bg-brand-500 text-brand-50 px-3 py-1 rounded-sm text-xs font-medium hover:bg-brand-600 transition-colors" onclick="FTApp.fetchPricesNow()">立即刷新</button>
+</div>
+<nav class="bg-surface-elevated border-b border-edge flex overflow-x-auto">
+  <a href="pool.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">观察池</a>
+  <a href="fundamental.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors border-b-2 border-brand-500 text-brand-500">基本面</a>
+  <a href="signal.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">信号引擎</a>
+  <a href="trade.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">模拟交易</a>
+  <a href="journal.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">交易日志</a>
+  <a href="dashboard.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">仪表盘</a>
+  <a href="settings.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">设置</a>
+</nav>
+<main class="max-w-7xl mx-auto px-5 py-6">
+  <div class="mb-6">
+    <h2 class="font-serif text-xl text-ink-secondary mb-1">基本面分析</h2>
+    <p class="text-xs text-ink-dim">五维度评分体系 · 供需/库存/基差/宏观/技术</p>
+  </div>
+  <!-- Species Selector -->
+  <div class="mb-4 flex items-center gap-3">
+    <label class="text-sm text-ink-muted font-medium">选择品种:</label>
+    <select id="fundSpeciesSelect" onchange="FTRender.loadFundamental()" class="p-2 border border-edge-subtle rounded-sm bg-surface text-ink text-sm font-mono min-w-[120px]">
+      <option value="">-- 请选择 --</option>
+    </select>
+  </div>
+  <!-- 5-Dimension Scoring Table -->
+  <div class="bg-surface rounded-lg border border-edge-subtle shadow-sm overflow-hidden mb-4">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-surface-hover">
+            <th class="py-2.5 px-4 text-left text-xs font-medium text-ink-muted uppercase tracking-wider">维度</th>
+            <th class="py-2.5 px-4 text-left text-xs font-medium text-ink-muted uppercase tracking-wider">评分 (1-10)</th>
+            <th class="py-2.5 px-4 text-left text-xs font-medium text-ink-muted uppercase tracking-wider">说明</th>
+          </tr>
+        </thead>
+        <tbody id="fundBody" class="divide-y divide-edge-faint">
+          <tr>
+            <td class="py-3 px-4 text-ink-secondary font-medium">供需格局</td>
+            <td class="py-3 px-4"><input type="range" min="1" max="10" value="5" id="fundSupply" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">5</span></td>
+            <td class="py-3 px-4"><input type="text" id="fundSupplyNote" placeholder="供应过剩/紧缺，需求强弱" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
+          </tr>
+          <tr>
+            <td class="py-3 px-4 text-ink-secondary font-medium">库存水平</td>
+            <td class="py-3 px-4"><input type="range" min="1" max="10" value="5" id="fundInventory" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">5</span></td>
+            <td class="py-3 px-4"><input type="text" id="fundInventoryNote" placeholder="交易所库存/社会库存趋势" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
+          </tr>
+          <tr>
+            <td class="py-3 px-4 text-ink-secondary font-medium">基差结构</td>
+            <td class="py-3 px-4"><input type="range" min="1" max="10" value="5" id="fundBasis" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">5</span></td>
+            <td class="py-3 px-4"><input type="text" id="fundBasisNote" placeholder="近远月价差，现货升贴水" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
+          </tr>
+          <tr>
+            <td class="py-3 px-4 text-ink-secondary font-medium">宏观环境</td>
+            <td class="py-3 px-4"><input type="range" min="1" max="10" value="5" id="fundMacro" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">5</span></td>
+            <td class="py-3 px-4"><input type="text" id="fundMacroNote" placeholder="政策/汇率/经济周期" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
+          </tr>
+          <tr>
+            <td class="py-3 px-4 text-ink-secondary font-medium">技术形态</td>
+            <td class="py-3 px-4"><input type="range" min="1" max="10" value="5" id="fundTechnical" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">5</span></td>
+            <td class="py-3 px-4"><input type="text" id="fundTechnicalNote" placeholder="趋势/支撑阻力/成交量" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="bg-surface-hover">
+            <td class="py-3 px-4 text-ink font-semibold">综合评分</td>
+            <td class="py-3 px-4 font-mono text-xl font-semibold text-brand-500" id="fundTotalScore">25 / 50</td>
+            <td class="py-3 px-4">
+              <div class="progress-bar" style="height:8px">
+                <div id="fundScoreBar" class="progress-fill" style="width:50%"></div>
+              </div>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  <!-- Action Buttons -->
+  <div class="flex gap-2 flex-wrap">
+    <button class="bg-brand-500 text-brand-50 px-4 py-2 rounded-sm text-sm font-medium hover:bg-brand-600 transition-colors" onclick="FTRender.saveFundamental()">保存评分</button>
+    <button class="bg-surface-elevated text-ink-secondary px-4 py-2 rounded-sm text-sm font-medium border border-edge-subtle hover:bg-surface-hover transition-colors" onclick="FTRender.loadFundamental()">重新加载</button>
+  </div>
+</main>
+<script src="../shared/app-core.js"></script>
+<script src="../shared/signal-engine.js"></script>
+<script src="../shared/trade-engine.js"></script>
+<script src="../shared/chart-engine.js"></script>
+<script src="../shared/ui-core.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  FTApp.loadState();
+  FTApp.loadSettings();
+  FTApp.initAutoRefresh();
+  FTApp.initAutoBackup();
+  FTApp.updateBackupDisplay();
+  FTApp.populateFundSelect();
+  FTRender.loadFundamental();
+});
+</script>
+
+    <style>
+.toast{position:fixed;top:20px;right:20px;background:#d97757;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:2000;display:none;animation:fadeIn .3s;font-family:Poppins,ui-sans-serif,system-ui,sans-serif}
+.toast.show{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-overlay.show{display:flex}
+.modal{background:#30302e;border:1px solid #4a4a43;border-radius:12px;padding:20px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 10px -1px rgba(0,0,0,0.1)}
+.modal h3{margin-bottom:12px;color:#d97757;font-family:Lora,Georgia,ui-serif,serif}
+.form-group{margin-bottom:10px}
+.form-group label{display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#b7b5a9}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:6px 10px;background:#1b1b19;border:1px solid #3e3e38;border-radius:8px;color:#faf9f5;font-size:13px;font-family:Poppins,ui-sans-serif,system-ui,sans-serif;transition:border-color .2s}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#d97757;box-shadow:0 0 0 3px rgba(217,119,87,0.15)}
+.form-group textarea{resize:vertical;min-height:40px}
+.form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.form-help{font-size:12px;color:#908e84;margin-top:4px}
+.signal-light{display:inline-block;width:20px;height:20px;border-radius:50%;margin:0 2px;vertical-align:middle}
+.signal-green{background:#8ca06f;box-shadow:0 0 6px #8ca06f}
+.signal-yellow{background:#e08d6f;box-shadow:0 0 6px #e08d6f}
+.signal-red{background:#ef4444;box-shadow:0 0 6px #ef4444}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.status-dot.online{background:#8ca06f;box-shadow:0 0 4px #8ca06f}
+.status-dot.offline{background:#ef4444}
+.status-dot.loading{background:#fdd835;animation:pulse 1s infinite}
+.switch{position:relative;display:inline-block;width:36px;height:20px}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;inset:0;background:#30302e;border-radius:20px;transition:.3s;border:1px solid #4a4a43}
+.slider:before{content:'';position:absolute;height:14px;width:14px;left:2px;bottom:2px;background:#908e84;border-radius:50%;transition:.3s}
+input:checked+.slider{background:#d97757;border-color:#d97757}
+input:checked+.slider:before{transform:translateX(16px);background:#faf9f5}
+.alert-box{background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:8px;padding:12px;margin:8px 0;color:#ef4444;font-weight:500;font-size:13px}
+.info-box{background:rgba(217,119,87,0.08);border:1px solid #d97757;border-radius:8px;padding:12px;margin:8px 0;color:#d97757;font-size:13px}
+.progress-bar{background:#30302e;border-radius:10px;height:20px;overflow:hidden;margin:8px 0}
+.progress-fill{height:100%;background:linear-gradient(90deg,#8ca06f,#d97757);border-radius:10px;transition:width .5s;display:flex;align-items:center;justify-content:center;color:#faf9f5;font-size:11px;font-weight:600}
+.empty-state{text-align:center;padding:40px;color:#908e84;font-family:Lora,Georgia,ui-serif,serif;font-style:italic}
+canvas{width:100%!important;max-height:300px}
+/* Fundamental score bars */
+.score-bar{height:8px;border-radius:4px;background:#30302e;overflow:hidden;margin-top:4px}
+.score-fill{height:100%;border-radius:4px;transition:width .3s}
+</style>
+</body>
+</html>

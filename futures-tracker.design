@@ -1,1 +1,113 @@
-placeholder
+{
+  "data": [
+    {
+      "id": "page-pool",
+      "type": "page",
+      "title": "观察池",
+      "version": 1,
+      "createdAt": 1751868800000,
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/pool.html"
+      }
+    },
+    {
+      "id": "page-fundamental",
+      "type": "page",
+      "title": "基本面",
+      "version": 1,
+      "createdAt": 1751868800000,
+      "canvasData": {
+        "x": 620,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/fundamental.html"
+      }
+    },
+    {
+      "id": "page-signal",
+      "type": "page",
+      "title": "信号引擎",
+      "version": 1,
+      "createdAt": 1751868800000,
+      "canvasData": {
+        "x": 1240,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/signal.html"
+      }
+    },
+    {
+      "id": "page-trade",
+      "type": "page",
+      "title": "模拟交易",
+      "version": 1,
+      "createdAt": 1751868800000,
+      "canvasData": {
+        "x": 1860,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/trade.html"
+      }
+    },
+    {
+      "id": "page-journal",
+      "type": "page",
+      "title": "交易日志",
+      "version": 1,
+      "createdAt": 1751868800000,
+      "canvasData": {
+        "x": 0,
+        "y": 377,
+        "group": 1
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/journal.html"
+      }
+    },
+    {
+      "id": "page-dashboard",
+      "type": "page",
+      "title": "仪表盘",
+      "version": 1,
+      "createdAt": 1751868800000,
+      "canvasData": {
+        "x": 620,
+        "y": 377,
+        "group": 1
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/dashboard.html"
+      }
+    },
+    {
+      "id": "page-settings",
+      "type": "page",
+      "title": "设置",
+      "version": 1,
+      "createdAt": 1751868800000,
+      "canvasData": {
+        "x": 1240,
+        "y": 377,
+        "group": 1
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/settings.html"
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": true,
+    "deviceType": "desktop"
+  }
+}
