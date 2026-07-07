@@ -1,7 +1,0 @@
-# Local data backups (user-exported JSON)
-*.json.bak
-futures_tracker_backup_*.json
-screenshot.png
-online_index.html
-.DS_Store
-Thumbs.db

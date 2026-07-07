@@ -123,9 +123,59 @@
     --shadow-xl: 0 1px 3px 0 rgba(0,0,0,0.1), 0 8px 10px -1px rgba(0,0,0,0.1);
   }
   @layer base {
-    body { background: var(--color-surface-base); color: var(--color-ink); }
+    body { background: var(--bg); color: var(--text); transition: background-color 0.3s, color 0.3s; }
     td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
     th { @apply whitespace-nowrap; }
+    html.light body { background: #f8f6f1; color: #1a1915; }
+    html.light .bg-surface-base,
+    html.light [class*="bg-surface-base"] { background-color: #f8f6f1 !important; }
+    html.light .bg-surface,
+    html.light .bg-surface-elevated,
+    html.light [class*="bg-surface-elevated"],
+    html.light [class*="bg-surface-dim"] { background-color: #ffffff !important; }
+    html.light [class*="bg-surface-hover"] { background-color: #f0ede6 !important; }
+    html.light [class*="bg-surface-muted"] { background-color: #e8e5dd !important; }
+    html.light [class*="border-edge"],
+    html.light [class*="border-edge-subtle"],
+    html.light [class*="border-edge-faint"],
+    html.light [class*="border-edge-divider"] { border-color: #e0ddd5 !important; }
+    html.light .text-ink,
+    html.light [class*="text-ink"]:not(.text-brand-500):not(.text-brand-600):not(.text-success):not(.text-error):not(.text-error-bg) { color: #1a1915 !important; }
+    html.light .text-ink-secondary { color: #4a4a43 !important; }
+    html.light .text-ink-muted { color: #6e6d68 !important; }
+    html.light .text-ink-dim { color: #908e84 !important; }
+    html.light .text-ink-faint { color: #b0ada5 !important; }
+    html.light .card-surface,
+    html.light .bg-surface { background-color: #ffffff !important; border-color: #e0ddd5 !important; }
+    html.light .shadow-sm { box-shadow: 0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.06) !important; }
+    html.light .shadow-md { box-shadow: 0 2px 4px 0 rgba(0,0,0,0.06), 0 2px 4px -1px rgba(0,0,0,0.04) !important; }
+    html.light header { background-color: #ffffff !important; border-color: #e0ddd5 !important; }
+    html.light nav { background-color: #ffffff !important; }
+    html.light th { background-color: #f0ede6 !important; color: #6e6d68 !important; }
+    html.light td { color: #1a1915 !important; }
+    html.light input, html.light select, html.light textarea { background-color: #f8f6f1 !important; border-color: #e0ddd5 !important; color: #1a1915 !important; }
+    html.light .modal { background-color: #ffffff !important; border-color: #e0ddd5 !important; }
+    html.light .form-group label { color: #6e6d68 !important; }
+    html.light .form-help { color: #908e84 !important; }
+    html.light .info-box { background-color: rgba(196,93,58,0.06) !important; border-color: #c45d3a !important; color: #c45d3a !important; }
+    html.light .alert-box { background-color: rgba(204,51,51,0.06) !important; border-color: #cc3333 !important; color: #cc3333 !important; }
+    html.light .toast { background-color: #c45d3a !important; }
+    html.light .progress-bar { background-color: #e0ddd5 !important; }
+    html.light .progress-fill { background: linear-gradient(90deg, #5c7a3e, #c45d3a) !important; }
+    html.light .auto-refresh-bar { background-color: #f0ede6 !important; border-color: #e0ddd5 !important; }
+    html.light .status-dot.online { background: #5c7a3e !important; box-shadow: 0 0 4px #5c7a3e !important; }
+    html.light .status-dot.offline { background: #cc3333 !important; }
+    html.light .status-dot.loading { background: #c49600 !important; }
+    html.light .signal-green { background: #5c7a3e !important; box-shadow: 0 0 6px #5c7a3e !important; }
+    html.light .signal-yellow { background: #c49600 !important; box-shadow: 0 0 6px #c49600 !important; }
+    html.light .signal-red { background: #cc3333 !important; box-shadow: 0 0 6px #cc3333 !important; }
+    html.light .switch .slider { background: #e0ddd5 !important; border-color: #d0cdc5 !important; }
+    html.light .switch .slider:before { background: #908e84 !important; }
+    html.light input:checked + .slider { background: #c45d3a !important; border-color: #c45d3a !important; }
+    html.light input:checked + .slider:before { background: #ffffff !important; }
+    html.light ::-webkit-scrollbar { width: 8px; height: 8px; }
+    html.light ::-webkit-scrollbar-track { background: #f0ede6; }
+    html.light ::-webkit-scrollbar-thumb { background: #ccc9c0; border-radius: 4px; }
   }
     </style>
     <style>
@@ -147,16 +197,14 @@
 </head>
 <body class="bg-surface-base text-ink font-sans min-h-screen">
 <div id="toast" class="toast"></div>
-<div class="bg-error-bg border-b border-error text-error text-center py-2 px-4 text-xs font-medium tracking-wider font-sans">
-  本系统为模拟盘，非投资建议，期货交易高风险
-</div>
+
 <header class="bg-surface-elevated border-b border-edge-divider px-5 py-3 flex items-center justify-between">
   <h1 class="font-display text-lg text-brand-500 font-medium tracking-tight">
     小资金商品期货 <span class="text-ink-muted font-serif italic">模拟盘跟踪系统</span>
   </h1>
   <div class="flex items-center gap-4 text-sm text-ink-muted">
     <span>起始: <span id="headerInitEquity" class="text-ink font-mono">15,000</span> | 目标: <span id="headerTarget" class="text-ink font-mono">1,000,000</span></span>
-    <button class="bg-surface-muted text-ink-muted px-3 py-1.5 rounded-sm text-xs font-medium border border-edge-subtle hover:bg-surface-hover hover:text-ink transition-colors" onclick="FTApp.toggleTheme()">切换主题</button>
+    <button id="themeBtn" onclick="FTApp.toggleTheme()" title="切换深色/浅色主题" class="flex items-center gap-1 text-ink-dim hover:text-ink text-xs transition-colors duration-300 px-2 py-1 rounded hover:bg-surface-hover"><span id="themeIcon" style="transition:transform 0.3s;display:inline-block">&#9790;</span><span id="themeLabel">深色</span></button>
     </div>
 </header>
 <div class="auto-refresh-bar bg-surface border-b border-edge-divider px-5 py-1.5 flex items-center justify-between flex-wrap:wrap gap:2 text-xs text-ink-muted">
@@ -250,6 +298,7 @@
 <script src="../shared/ui-core.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  FTApp.initTheme();
   FTApp.loadState();
   FTApp.loadSettings();
   FTApp.initAutoRefresh();

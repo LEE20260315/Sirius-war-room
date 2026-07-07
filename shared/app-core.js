@@ -404,14 +404,26 @@ function showToast(msg) {
 function toggleTheme() {
   const d = document.documentElement;
   const isDark = d.classList.contains('dark');
-  if (isDark) {
-    d.classList.remove('dark');
-    d.classList.add('light');
-  } else {
-    d.classList.remove('light');
-    d.classList.add('dark');
-  }
+  d.classList.toggle('dark', !isDark);
+  d.classList.toggle('light', isDark);
+  d.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  const icon = document.getElementById('themeIcon');
+  const label = document.getElementById('themeLabel');
+  if (icon) { icon.style.transform = 'rotate(360deg)'; setTimeout(() => { icon.innerHTML = isDark ? '&#9728;' : '&#9790;'; icon.style.transform = 'rotate(0deg)'; }, 150); }
+  if (label) label.textContent = isDark ? '浅色' : '深色';
   localStorage.setItem('futures_theme', isDark ? 'light' : 'dark');
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('futures_theme') || 'dark';
+  const d = document.documentElement;
+  d.classList.toggle('dark', saved === 'dark');
+  d.classList.toggle('light', saved === 'light');
+  d.setAttribute('data-theme', saved);
+  const icon = document.getElementById('themeIcon');
+  const label = document.getElementById('themeLabel');
+  if (icon) icon.innerHTML = saved === 'dark' ? '&#9790;' : '&#9728;';
+  if (label) label.textContent = saved === 'dark' ? '深色' : '浅色';
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
@@ -573,7 +585,7 @@ window.FTApp = {
   init, loadState, saveState, state, getCurrentEquity, getRealizedEquity,
   fetchPricesNow, onPriceUpdate, populateSymbolSelect, populateFundSelect,
   FUND_DIMENSIONS, DEFAULT_COMMODITIES, escapeHtml, showToast, openModal, closeModal,
-  toggleTheme, isSweetSignal, setDataSourceStatus, setLastUpdateTime,
+  toggleTheme, initTheme, isSweetSignal, setDataSourceStatus, setLastUpdateTime,
   initAutoRefresh, initAutoBackup, updateBackupDisplay, updateHeaderStats,
   loadSettings, saveSettings
 };
