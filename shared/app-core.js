@@ -6,20 +6,84 @@
 const APP_VERSION = '2026.06.22-v6';
 
 // ============ DATA STORE ============
+// 交易所分类品种主数据：覆盖国内五大期货交易所
+// exchange: SHFE(上海期货) / DCE(大连商品) / CZCE(郑州商品) / GFEX(广州期货) / CFFEX(中金所)
+// category: 农产品 / 黑色系 / 有色金属 / 贵金属 / 能源化工 / 新能源 / 股指
+const EXCHANGE_VARIETIES = [
+  // 上海期货交易所 (SHFE)
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'铜',code:'CU',multiplier:5,marginRate:0.09,defaultContract:'CU0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'铝',code:'AL',multiplier:5,marginRate:0.08,defaultContract:'AL0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'锌',code:'ZN',multiplier:5,marginRate:0.08,defaultContract:'ZN0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'镍',code:'NI',multiplier:1,marginRate:0.12,defaultContract:'NI0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'贵金属',symbol:'黄金',code:'AU',multiplier:1000,marginRate:0.08,defaultContract:'AU0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'贵金属',symbol:'白银',code:'AG',multiplier:15,marginRate:0.10,defaultContract:'AG0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'黑色系',symbol:'螺纹钢',code:'RB',multiplier:10,marginRate:0.10,defaultContract:'RB0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'黑色系',symbol:'热卷',code:'HC',multiplier:10,marginRate:0.10,defaultContract:'HC0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'黑色系',symbol:'铁矿石',code:'I',multiplier:100,marginRate:0.12,defaultContract:'I0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'能源化工',symbol:'天然橡胶',code:'RU',multiplier:10,marginRate:0.12,defaultContract:'RU0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'能源化工',symbol:'沥青',code:'BU',multiplier:10,marginRate:0.08,defaultContract:'BU0'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'能源化工',symbol:'纸浆',code:'SP',multiplier:10,marginRate:0.08,defaultContract:'SP0'},
+  // 大连商品交易所 (DCE)
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'棕榈油',code:'P',multiplier:10,marginRate:0.08,defaultContract:'P0'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'玉米',code:'C',multiplier:10,marginRate:0.08,defaultContract:'C0'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'豆粕',code:'M',multiplier:10,marginRate:0.08,defaultContract:'M0'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'豆油',code:'Y',multiplier:10,marginRate:0.08,defaultContract:'Y0'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'生猪',code:'LH',multiplier:16,marginRate:0.12,defaultContract:'LH0'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'PVC',code:'V',multiplier:5,marginRate:0.08,defaultContract:'V0'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'聚丙烯PP',code:'PP',multiplier:5,marginRate:0.08,defaultContract:'PP0'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'塑料LLDPE',code:'L',multiplier:5,marginRate:0.08,defaultContract:'L0'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'乙二醇',code:'EG',multiplier:10,marginRate:0.08,defaultContract:'EG0'},
+  // 郑州商品交易所 (CZCE)
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'白糖',code:'SR',multiplier:10,marginRate:0.08,defaultContract:'SR0'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'棉花',code:'CF',multiplier:5,marginRate:0.08,defaultContract:'CF0'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'苹果',code:'AP',multiplier:10,marginRate:0.10,defaultContract:'AP0'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'甲醇',code:'MA',multiplier:10,marginRate:0.08,defaultContract:'MA0'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'玻璃',code:'FG',multiplier:20,marginRate:0.08,defaultContract:'FG0'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'纯碱',code:'SA',multiplier:20,marginRate:0.08,defaultContract:'SA0'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'尿素',code:'UR',multiplier:20,marginRate:0.08,defaultContract:'UR0'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'烧碱',code:'SH',multiplier:30,marginRate:0.08,defaultContract:'SH0'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'PTA',code:'TA',multiplier:5,marginRate:0.08,defaultContract:'TA0'},
+  // 广州期货交易所 (GFEX)
+  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'多晶硅',code:'PS',multiplier:3,marginRate:0.12,defaultContract:'PS0'},
+  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'工业硅',code:'SI',multiplier:5,marginRate:0.12,defaultContract:'SI0'},
+  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'碳酸锂',code:'LC',multiplier:1,marginRate:0.15,defaultContract:'LC0'},
+  // 中国金融期货交易所 (CFFEX)
+  {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'沪深300',code:'IF',multiplier:300,marginRate:0.12,defaultContract:'IF0'},
+  {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'上证50',code:'IH',multiplier:300,marginRate:0.12,defaultContract:'IH0'},
+  {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'中证500',code:'IC',multiplier:200,marginRate:0.14,defaultContract:'IC0'}
+];
+
+// 板块分类显示顺序
+const CATEGORY_ORDER = ['农产品','黑色系','有色金属','贵金属','能源化工','新能源','股指'];
+
+// 飞书日报品种名 → 项目品种符号归一化（双向）
+// 飞书表用"橡胶"/"黄金"/"白银"，项目用"天然橡胶"/"黄金"/"白银"
+const FEISHU_VARIETY_MAP = {
+  '橡胶':'天然橡胶','黄金':'黄金','白银':'白银',
+  '螺纹钢':'螺纹钢','碳酸锂':'碳酸锂','多晶硅':'多晶硅',
+  '白糖':'白糖','玻璃':'玻璃','铜':'铜','棕榈油':'棕榈油'
+};
+// 反向映射：项目符号 → 飞书品种名
+const PROJECT_TO_FEISHU_MAP = {};
+Object.keys(FEISHU_VARIETY_MAP).forEach(k => {
+  PROJECT_TO_FEISHU_MAP[FEISHU_VARIETY_MAP[k]] = k;
+});
+
+// 按品种名查找 EXCHANGE_VARIETIES 元数据
+function findVarietyMeta(symbol) {
+  return EXCHANGE_VARIETIES.find(v => v.symbol === symbol);
+}
+
+// 预置观察池：用户指定的 8 个品种（合约默认为主力连续）
 const DEFAULT_COMMODITIES = [
-  {symbol:'生猪',contractCode:'LH2609',multiplier:16,marginRate:0.12,price:13500,percentile:15,costLine:14000,status:'bottom'},
-  {symbol:'白糖',contractCode:'SR2609',multiplier:10,marginRate:0.08,price:5800,percentile:20,costLine:5600,status:'bottom'},
-  {symbol:'PVC',contractCode:'V2609',multiplier:5,marginRate:0.08,price:5200,percentile:18,costLine:5400,status:'bottom'},
-  {symbol:'聚丙烯PP',contractCode:'PP2609',multiplier:5,marginRate:0.08,price:7100,percentile:22,costLine:7300,status:'bottom'},
-  {symbol:'玻璃',contractCode:'FG2609',multiplier:20,marginRate:0.08,price:1250,percentile:12,costLine:1300,status:'bottom'},
-  {symbol:'纯碱',contractCode:'SA2609',multiplier:20,marginRate:0.08,price:1650,percentile:16,costLine:1700,status:'bottom'},
-  {symbol:'螺纹钢',contractCode:'RB2610',multiplier:10,marginRate:0.10,price:3050,percentile:25,costLine:3200,status:'bottom'},
-  {symbol:'热卷',contractCode:'HC2610',multiplier:10,marginRate:0.10,price:3150,percentile:23,costLine:3300,status:'bottom'},
-  {symbol:'铁矿石',contractCode:'I2609',multiplier:100,marginRate:0.12,price:680,percentile:28,costLine:720,status:'watch'},
-  {symbol:'玉米',contractCode:'C2609',multiplier:10,marginRate:0.08,price:2400,percentile:20,costLine:2500,status:'bottom'},
-  {symbol:'甲醇',contractCode:'MA2609',multiplier:10,marginRate:0.08,price:2250,percentile:18,costLine:2400,status:'bottom'},
-  {symbol:'烧碱',contractCode:'SH2609',multiplier:30,marginRate:0.08,price:2600,percentile:15,costLine:2750,status:'bottom'},
-  {symbol:'尿素',contractCode:'UR2609',multiplier:20,marginRate:0.08,price:1800,percentile:17,costLine:1900,status:'bottom'}
+  {symbol:'棕榈油',contractCode:'P0',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'DCE'},
+  {symbol:'白糖',contractCode:'SR0',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE'},
+  {symbol:'棉花',contractCode:'CF0',multiplier:5,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE'},
+  {symbol:'天然橡胶',contractCode:'RU0',multiplier:10,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'能源化工',exchange:'SHFE'},
+  {symbol:'铜',contractCode:'CU0',multiplier:5,marginRate:0.09,price:0,percentile:0,costLine:0,status:'bottom',category:'有色金属',exchange:'SHFE'},
+  {symbol:'黄金',contractCode:'AU0',multiplier:1000,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE'},
+  {symbol:'白银',contractCode:'AG0',multiplier:15,marginRate:0.10,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE'},
+  {symbol:'多晶硅',contractCode:'PS0',multiplier:3,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX'}
 ];
 
 const FUND_DIMENSIONS = [
@@ -161,19 +225,36 @@ function checkAutoBackup() {
 
 // ============ AUTO FETCH PRICES ============
 // East Money HTTPS single-stock API (primary)
+// secid 格式: {市场码}{品种代码小写}m，市场码: 113=SHFE, 114=DCE, 115=CZCE, 8=GFEX
 const EASTMONEY_SYMBOL_MAP = {
-  '螺纹钢':'113.rbm', '热卷':'113.hcm', '铁矿石':'114.im', '玉米':'114.cm',
-  '生猪':'114.lhm', 'PVC':'114.vm', '聚丙烯PP':'114.ppm', 'PP':'114.ppm',
+  // SHFE
+  '螺纹钢':'113.rbm', '热卷':'113.hcm', '铁矿石':'114.im', '天然橡胶':'113.rum',
+  '铜':'113.cum', '铝':'113.alm', '锌':'113.znm', '镍':'113.nim',
+  '黄金':'113.aum', '白银':'113.agm', '沥青':'113.bum', '纸浆':'113.spm',
+  // DCE
+  '玉米':'114.cm', '生猪':'114.lhm', '棕榈油':'114.pm', '豆粕':'114.mm', '豆油':'114.ym',
+  'PVC':'114.vm', '聚丙烯PP':'114.ppm', 'PP':'114.ppm', '塑料LLDPE':'114.lm', '乙二醇':'114.egm',
+  // CZCE
   '甲醇':'115.mam', '玻璃':'115.fgm', '白糖':'115.srm', '纯碱':'115.sam',
-  '烧碱':'115.shm', '尿素':'115.urm'
+  '烧碱':'115.shm', '尿素':'115.urm', '棉花':'115.cfm', '苹果':'115.apm', 'PTA':'115.tam',
+  // GFEX
+  '多晶硅':'8.psm', '工业硅':'8.sim', '碳酸锂':'8.lcm'
 };
 
 // Sina Finance continuous contract mapping (backup)
 const SINA_SYMBOL_MAP = {
-  '螺纹钢':'RB0', '热卷':'HC0', '铁矿石':'I0', '玉米':'C0',
-  '生猪':'LH0', 'PVC':'V0', '聚丙烯PP':'PP0', 'PP':'PP0',
+  // SHFE
+  '螺纹钢':'RB0', '热卷':'HC0', '铁矿石':'I0', '天然橡胶':'RU0',
+  '铜':'CU0', '铝':'AL0', '锌':'ZN0', '镍':'NI0',
+  '黄金':'AU0', '白银':'AG0', '沥青':'BU0', '纸浆':'SP0',
+  // DCE
+  '玉米':'C0', '生猪':'LH0', '棕榈油':'P0', '豆粕':'M0', '豆油':'Y0',
+  'PVC':'V0', '聚丙烯PP':'PP0', 'PP':'PP0', '塑料LLDPE':'L0', '乙二醇':'EG0',
+  // CZCE
   '甲醇':'MA0', '玻璃':'FG0', '白糖':'SR0', '纯碱':'SA0',
-  '烧碱':'SH0', '尿素':'UR0'
+  '烧碱':'SH0', '尿素':'UR0', '棉花':'CF0', '苹果':'AP0', 'PTA':'TA0',
+  // GFEX
+  '多晶硅':'PS0', '工业硅':'SI0', '碳酸锂':'LC0'
 };
 
 let autoRefreshTimer = null;
@@ -273,6 +354,15 @@ function fetchPricesFromSina(symbols, symbolToPool) {
 // === Combined fetch: East Money -> Sina -> Manual ===
 async function fetchPricesNow() {
   const t0 = Date.now();
+
+  // 空池早返回：不发起任何网络请求
+  if (!state.pool || state.pool.length === 0) {
+    setDataSourceStatus('offline', '数据源: 手动模式 · 观察池为空');
+    setLastUpdateTime(new Date().toLocaleTimeString('zh-CN'));
+    showToast('观察池为空，请先添加品种');
+    return {ok:0, fail:0, total:0};
+  }
+
   setDataSourceStatus('loading', '数据源: 正在获取行情...');
 
   // Reset status
@@ -314,13 +404,14 @@ async function fetchPricesNow() {
 
   const totalOk = emOk + sinaOk;
   const elapsed = Date.now() - t0;
+  const poolLen = state.pool.length;
 
   if (totalOk > 0) {
     saveState();
     if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool();
     onPriceUpdate();
     const src = emOk > 0 ? '东财' : '新浪';
-    setDataSourceStatus('online', `数据源: ${src}行情 (${totalOk}/${state.pool.length} 成功) · ${elapsed}ms`);
+    setDataSourceStatus('online', `数据源: ${src}行情 (${totalOk}/${poolLen} 成功) · ${elapsed}ms`);
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN'));
     showToast(`已更新 ${totalOk} 个品种价格`);
   } else {
@@ -329,7 +420,7 @@ async function fetchPricesNow() {
     showToast('行情获取失败，使用手动数据');
   }
 
-  return {ok:totalOk, fail:state.pool.length - totalOk, total:state.pool.length};
+  return {ok:totalOk, fail:poolLen - totalOk, total:poolLen};
 }
 
 async function fetchPricesFromCustomApi() {
@@ -450,10 +541,13 @@ function getRealizedEquity() {
 
 function onPriceUpdate() {
   saveState();
-  if (document.getElementById('tab-trade').classList.contains('active')) {
+  // 多页 HTML 架构下，tab-trade / tab-dashboard 元素并不总是存在，需判空
+  const tabTrade = document.getElementById('tab-trade');
+  if (tabTrade && tabTrade.classList.contains('active')) {
     if (window.FTRender && window.FTRender.renderTrades) window.FTRender.renderTrades();
   }
-  if (document.getElementById('tab-dashboard').classList.contains('active')) {
+  const tabDashboard = document.getElementById('tab-dashboard');
+  if (tabDashboard && tabDashboard.classList.contains('active')) {
     if (window.FTRender && window.FTRender.renderDashboard) window.FTRender.renderDashboard();
   }
 }
@@ -482,8 +576,26 @@ function populateSymbolSelect(sel) {
 }
 
 function populateFundSelect() {
-  const sel = document.getElementById('fundSelect');
-  if (sel) sel.innerHTML = state.pool.map(c=>`<option value="${escapeHtml(c.symbol)}">${escapeHtml(c.symbol)}</option>`).join('');
+  // 兼容旧 ID fundSelect 与新 ID fundSpeciesSelect
+  const sel = document.getElementById('fundSelect') || document.getElementById('fundSpeciesSelect');
+  if (!sel) return;
+  // 按交易所分组渲染 optgroup，数据源为 EXCHANGE_VARIETIES
+  const exchangeOrder = ['SHFE','DCE','CZCE','GFEX','CFFEX'];
+  const exchangeNameMap = {
+    'SHFE':'上海期货交易所','DCE':'大连商品交易所','CZCE':'郑州商品交易所',
+    'GFEX':'广州期货交易所','CFFEX':'中国金融期货交易所'
+  };
+  let html = '<option value="">-- 请选择 --</option>';
+  exchangeOrder.forEach(ex => {
+    const items = EXCHANGE_VARIETIES.filter(v => v.exchange === ex);
+    if (!items.length) return;
+    html += `<optgroup label="${exchangeNameMap[ex]}">`;
+    items.forEach(v => {
+      html += `<option value="${escapeHtml(v.symbol)}">${escapeHtml(v.symbol)}（${v.category}）</option>`;
+    });
+    html += '</optgroup>';
+  });
+  sel.innerHTML = html;
 }
 
 function isSweetSignal(symbol) {
@@ -582,10 +694,28 @@ function init() {
 
 // ============ EXPORTS ============
 window.FTApp = {
+  // init / state
   init, loadState, saveState, state, getCurrentEquity, getRealizedEquity,
-  fetchPricesNow, onPriceUpdate, populateSymbolSelect, populateFundSelect,
-  FUND_DIMENSIONS, DEFAULT_COMMODITIES, escapeHtml, showToast, openModal, closeModal,
-  toggleTheme, initTheme, isSweetSignal, setDataSourceStatus, setLastUpdateTime,
-  initAutoRefresh, initAutoBackup, updateBackupDisplay, updateHeaderStats,
-  loadSettings, saveSettings
+  // 行情拉取
+  fetchPricesNow, fetchPricesFromCustomApi, onPriceUpdate,
+  // 自动刷新
+  toggleAutoRefresh, updateRefreshInterval, startAutoRefresh, stopAutoRefresh,
+  initAutoRefresh,
+  // 备份/导入导出
+  initAutoBackup, updateBackupDisplay, toggleAutoBackup,
+  exportData, importData, handleImport,
+  // 选择器填充
+  populateSymbolSelect, populateFundSelect,
+  // 主题/通用 UI
+  toggleTheme, initTheme, showToast, openModal, closeModal,
+  setDataSourceStatus, setLastUpdateTime, updateHeaderStats,
+  // 设置
+  loadSettings, saveSettings,
+  // 工具
+  escapeHtml, isSweetSignal,
+  // 常量
+  FUND_DIMENSIONS, DEFAULT_COMMODITIES,
+  EXCHANGE_VARIETIES, CATEGORY_ORDER,
+  FEISHU_VARIETY_MAP, PROJECT_TO_FEISHU_MAP,
+  findVarietyMeta
 };

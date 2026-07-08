@@ -193,6 +193,15 @@
         mask-position: center;
         background-color: currentColor;
       }
+      /* Page enter transition - 消除切换闪烁 */
+      .page-enter { animation: pageEnter 0.3s cubic-bezier(0.4,0,0.2,1); }
+      @keyframes pageEnter {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .page-enter { animation: none; }
+      }
     </style>
 </head>
 <body class="bg-surface-base text-ink font-sans min-h-screen">
@@ -213,7 +222,7 @@
       <span>自动刷新</span>
       <label class="switch"><input type="checkbox" id="autoRefreshToggle" onchange="FTApp.toggleAutoRefresh()"><span class="slider"></span></label>
     </label>
-    <span>间隔: <select id="refreshInterval" onchange="FTApp.updateRefreshInterval()" class="p-0.5 border border-edge rounded text-xs bg-surface text-ink"><option value="30">30秒</option><option value="60" selected>60秒</option><option value="120">2分钟</option><option value="300">5分钟</option></select></span>
+    <span>间隔: <select id="refreshInterval" onchange="FTApp.updateRefreshInterval()" class="p-0.5 border border-edge rounded text-xs bg-surface text-ink"><option value="60" selected>1分钟</option><option value="300">5分钟</option><option value="1800">30分钟</option><option value="3600">1小时</option></select></span>
     <span id="dataSourceStatus"><span class="status-dot offline"></span>数据源: 手动模式</span>
     <span id="lastUpdateTime">最近更新: --</span>
   </div>
@@ -228,7 +237,7 @@
   <a href="dashboard.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors border-b-2 border-brand-500 text-brand-500">仪表盘</a>
   <a href="settings.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">设置</a>
 </nav>
-<main class="max-w-7xl mx-auto px-5 py-6">
+<main class="max-w-7xl mx-auto px-5 py-6 page-enter">
   <div class="mb-6">
     <h2 class="font-serif text-xl text-ink-secondary mb-1">账户仪表盘</h2>
     <p class="text-xs text-ink-dim">资金曲线 · 收益统计 · 目标进度</p>

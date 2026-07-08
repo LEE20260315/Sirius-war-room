@@ -1,0 +1,30 @@
+# Checklist
+
+- [x] shared/ 目录下存在 app-core.js、ui-core.js、signal-engine.js、trade-engine.js、chart-engine.js 五个文件（无 404）
+- [ ] `EXCHANGE_VARIETIES` 主数据存在于 app-core.js，覆盖五大交易所与用户指定品种
+- [ ] `DEFAULT_COMMODITIES` 已替换为 8 个用户指定品种（棕榈油/白糖/天然橡胶/铜/黄金/白银/多晶硅/棉花），每条含 `category` 字段
+- [ ] `FTApp` 导出对象包含 `toggleAutoRefresh`、`updateRefreshInterval` 等所有被 HTML 调用的函数
+- [ ] `onPriceUpdate` 对 `getElementById('tab-trade')`/`'tab-dashboard'` 做了 null 判空
+- [ ] `fetchPricesNow` 在 `state.pool` 为空时不发起网络请求，状态条显示"观察池为空"，Toast 提示
+- [x] `window.FTRender` 在 ui-core.js 中定义，导出 renderPool/addPoolRow/savePool/removePoolRow/loadFundamental/saveFundamental/refreshSignals/renderDashboard/renderTrades/renderJournal/openTradeModal/openJournalModal/openVarietyPicker/loadFundamentalFeed/renderExternalFundSignal
+- [ ] 观察池渲染按 category 分组（农产品/黑色系/有色金属/贵金属/能源化工/新能源），每组有标题行
+- [ ] 点击"+ 添加品种"弹出按交易所分组的品种选择器
+- [ ] 选择品种后自动填入默认主力连续合约、乘数、保证金率
+- [ ] 重复添加品种时提示"已在观察池中"
+- [ ] 观察池每行合约列为可编辑 input + datalist，默认主力连续合约
+- [ ] 基本面页 `#fundSpeciesSelect` 使用 `<optgroup>` 按交易所分组
+- [ ] `shared/fundamental-feed.json` 存在，包含飞书日报最近 30 天记录（date/weekday/summary/signalChange/anomalyAlert/dataStatus/fullReport/varieties）
+- [ ] `app-core.js` 中存在 `FEISHU_VARIETY_MAP`（橡胶↔天然橡胶、黄金↔金、白银↔银）
+- [ ] 基本面页品种选择器下方有 `#externalFundPanel` 容器，加载时调用 `loadFundamentalFeed`
+- [ ] 选中"棕榈油"时面板显示最新日期的档位徽章/分数/变化/日报摘要
+- [ ] 选中"棉花"时面板显示"该品种暂无外部日报数据"占位，5 维度评分仍可用
+- [ ] 选中"天然橡胶"时通过 FEISHU_VARIETY_MAP 映射到飞书"橡胶"数据
+- [ ] 档位徽章配色：加仓=success/底仓=brand-500/不动=surface-muted/警惕拥挤=error（沿用 Claude token，无新色系）
+- [ ] fundamental-feed.json 加载失败时面板显示"外部数据加载失败"，不阻塞页面其余功能
+- [ ] 所有页面刷新间隔 select 仅含 1分钟/5分钟/30分钟/1小时 四档，默认 60
+- [ ] 所有页面 `<main>` 区域有 page-enter 淡入过渡（300ms，无白屏闪烁）
+- [ ] page-enter 过渡沿用现有 Claude 设计 token（不引入新色系/字体）
+- [ ] 切换"自动刷新"开关无 "is not a function" 报错
+- [x] signal-engine.js / trade-engine.js / chart-engine.js 为最小存根，不抛错
+- [ ] 浏览器控制台无 JS 报错（pool/fundamental/dashboard/signal/trade/journal/settings 各页面）
+- [ ] 数据源状态条在空池时不显示"13/14 成功"等误导性计数
