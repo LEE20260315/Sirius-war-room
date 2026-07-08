@@ -141,13 +141,25 @@
       if (sel && sel.value) {
         var meta = FTApp.findVarietyMeta(sel.value);
         if (meta) {
+          // 如果用户填了自定义合约，验证格式
+          if (customContract) {
+            var v = FTApp.validateContract(customContract, meta.symbol);
+            if (!v.valid) { FTApp.showToast(v.warning); return; }
+            if (v.warning) { FTApp.showToast(v.warning); } // 过期警告但允许添加
+          }
           entry = {
-            symbol: meta.symbol, contractCode: meta.defaultContract, multiplier: meta.multiplier,
+            symbol: meta.symbol, contractCode: customContract || meta.defaultContract, multiplier: meta.multiplier,
             marginRate: meta.marginRate, price: 0, percentile: 0, costLine: 0, status: 'bottom',
             category: meta.category, exchange: meta.exchange
           };
         }
       } else if (customName) {
+        // 自定义品种：验证合约（如果有）
+        if (customContract) {
+          var v2 = FTApp.validateContract(customContract, customName);
+          if (!v2.valid) { FTApp.showToast(v2.warning); return; }
+          if (v2.warning) { FTApp.showToast(v2.warning); }
+        }
         entry = {
           symbol: customName, contractCode: customContract || '0', multiplier: 10, marginRate: 0.08,
           price: 0, percentile: 0, costLine: 0, status: 'bottom', category: '能源化工', exchange: ''
@@ -175,13 +187,33 @@
       FTApp.showToast('已删除 ' + symbol);
     },
 
-    // ============ 5. 保存观察池（回写表格内输入） ============
+    // ============ 5. 保存观察池（回写表格内输入 + 合约验证） ============
     savePool: function () {
       var body = el('poolBody');
       if (!body) return;
       var findBySym = function (sym) { return FTApp.state.pool.find(function (x) { return x.symbol === sym; }); };
+      var warnings = [];
       body.querySelectorAll('.contract-input').forEach(function (inp) {
-        var c = findBySym(inp.dataset.symbol); if (c) c.contractCode = inp.value.trim();
+        var c = findBySym(inp.dataset.symbol);
+        if (c) {
+          var newCode = inp.value.trim();
+          // 合约纠错
+          if (newCode) {
+            var v = FTApp.validateContract(newCode, c.symbol);
+            if (!v.valid) {
+              FTApp.showToast(c.symbol + ': ' + v.warning);
+              inp.style.borderColor = '#ef4444';
+              return;
+            }
+            if (v.warning) {
+              warnings.push(c.symbol + ': ' + v.warning);
+              inp.style.borderColor = '#fdd835';
+            } else {
+              inp.style.borderColor = '';
+            }
+          }
+          c.contractCode = newCode;
+        }
       });
       body.querySelectorAll('.mult-input').forEach(function (inp) {
         var c = findBySym(inp.dataset.symbol); if (c) c.multiplier = +inp.value || c.multiplier;
@@ -193,7 +225,12 @@
         var c = findBySym(inp.dataset.symbol); if (c) c.costLine = +inp.value || 0;
       });
       FTApp.saveState();
-      FTApp.showToast('观察池已保存');
+      if (warnings.length) {
+        FTApp.showToast('已保存，' + warnings.length + ' 个合约有警告（见输入框边框）');
+        console.log('[FT] 合约警告:', warnings);
+      } else {
+        FTApp.showToast('观察池已保存');
+      }
     },
 
     // ============ 6. 加载基本面评分表 ============

@@ -452,13 +452,15 @@
 <script src="../shared/ui-core.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  FTApp.initTheme();
-  FTApp.loadState();
-  FTApp.loadSettings();
-  FTApp.initAutoRefresh();
-  FTApp.initAutoBackup();
-  FTApp.updateBackupDisplay();
-  FTRender.renderTrades();
+  // 每个初始化步骤独立 try-catch，避免单个失败中断整个初始化链
+  var safe = function(name, fn) { try { fn(); } catch(e) { console.error('[FT] 初始化失败:', name, e); } };
+  safe('initTheme', function(){ FTApp.initTheme(); });
+  safe('loadState', function(){ FTApp.loadState(); });
+  safe('loadSettings', function(){ FTApp.loadSettings(); });
+  safe('initAutoRefresh', function(){ FTApp.initAutoRefresh(); });
+  safe('initAutoBackup', function(){ FTApp.initAutoBackup(); });
+  safe('updateBackupDisplay', function(){ FTApp.updateBackupDisplay(); });
+  safe('renderTrades', function(){ FTRender.renderTrades(); });
 });
 </script>
 

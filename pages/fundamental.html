@@ -419,17 +419,20 @@
 <script src="../shared/ui-core.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', async function() {
-  FTApp.initTheme();
-  FTApp.loadState();
-  FTApp.loadSettings();
-  FTApp.initAutoRefresh();
-  FTApp.initAutoBackup();
-  FTApp.updateBackupDisplay();
-  FTApp.populateFundSelect();
+  // 每个初始化步骤独立 try-catch，避免单个失败中断整个初始化链
+  var safe = function(name, fn) { try { fn(); } catch(e) { console.error('[FT] 初始化失败:', name, e); } };
+  var safeAsync = async function(name, fn) { try { await fn(); } catch(e) { console.error('[FT] 初始化失败:', name, e); } };
+  safe('initTheme', function(){ FTApp.initTheme(); });
+  safe('loadState', function(){ FTApp.loadState(); });
+  safe('loadSettings', function(){ FTApp.loadSettings(); });
+  safe('initAutoRefresh', function(){ FTApp.initAutoRefresh(); });
+  safe('initAutoBackup', function(){ FTApp.initAutoBackup(); });
+  safe('updateBackupDisplay', function(){ FTApp.updateBackupDisplay(); });
+  safe('populateFundSelect', function(){ FTApp.populateFundSelect(); });
   // 异步加载飞书日报基本面数据，再渲染初始面板
-  await FTRender.loadFundamentalFeed();
-  FTRender.loadFundamental();
-  FTRender.renderExternalFundSignal();
+  await safeAsync('loadFundamentalFeed', function(){ return FTRender.loadFundamentalFeed(); });
+  safe('loadFundamental', function(){ FTRender.loadFundamental(); });
+  safe('renderExternalFundSignal', function(){ FTRender.renderExternalFundSignal(); });
 });
 </script>
 

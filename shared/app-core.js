@@ -74,6 +74,42 @@ function findVarietyMeta(symbol) {
   return EXCHANGE_VARIETIES.find(v => v.symbol === symbol);
 }
 
+// 合约代码纠错：检查格式和是否过期
+// 返回 { valid: bool, warning: string|null }
+function validateContract(contractCode, varietySymbol) {
+  if (!contractCode) return { valid: false, warning: '合约代码不能为空' };
+  const code = contractCode.trim().toUpperCase();
+  // 主力连续合约（如 P0, RB0, CU0）总是有效
+  if (/^[A-Z]+0$/.test(code)) return { valid: true, warning: null };
+  // 具体月份合约格式：字母+4位数字（如 RB2509, P2601）
+  const m = code.match(/^([A-Z]+)(\d{4})$/);
+  if (!m) return { valid: false, warning: '合约格式不正确，应为字母+4位数字（如 RB2509）或主力连续（如 RB0）' };
+  const prefix = m[1];
+  const ym = m[2];
+  // 检查品种前缀是否匹配
+  const meta = findVarietyMeta(varietySymbol);
+  if (meta && prefix !== meta.code.toUpperCase()) {
+    return { valid: false, warning: '合约前缀 ' + prefix + ' 与品种 ' + varietySymbol + ' 不匹配（应为 ' + meta.code.toUpperCase() + '）' };
+  }
+  // 检查是否过期：合约月份 = YYMM，如 2509 = 2025年9月
+  const yy = parseInt(ym.substring(0, 2));
+  const mm = parseInt(ym.substring(2, 4));
+  if (mm < 1 || mm > 12) return { valid: false, warning: '合约月份不正确（应为01-12）' };
+  // 当前年份后两位
+  const now = new Date();
+  const curYY = now.getFullYear() % 100;
+  const curMonth = now.getMonth() + 1;
+  // 合约年份在当前年份-2到+3范围内合理
+  let fullYY = yy;
+  if (yy < curYY - 2) fullYY += 100; // 如 97 → 1997
+  // 判断过期：合约月份已过（考虑交割月通常在当月15-20日左右最后交易日）
+  const contractYear = 2000 + yy;
+  if (contractYear < now.getFullYear() || (contractYear === now.getFullYear() && mm < curMonth)) {
+    return { valid: true, warning: '⚠ 合约 ' + code + ' 可能已过期（' + contractYear + '年' + mm + '月），建议使用主力连续或近月合约' };
+  }
+  return { valid: true, warning: null };
+}
+
 // 预置观察池：用户指定的 8 个品种（合约默认为主力连续）
 const DEFAULT_COMMODITIES = [
   {symbol:'棕榈油',contractCode:'P0',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'DCE'},
@@ -113,14 +149,22 @@ function loadState() {
     if (s) {
       const saved = JSON.parse(s);
       state = {...state, ...saved};
-      // version migration
-      if (!state.version) state.version = APP_VERSION;
+      // 版本迁移：旧版本（无 category 字段或品种数不匹配）重置为最新预置池
+      if (!state.version || state.version !== APP_VERSION) {
+        console.log('[FT] 版本迁移:', state.version, '→', APP_VERSION);
+        // 保留用户自定义的品种（有 category 的），但重置预置品种
+        const userCustom = (state.pool || []).filter(c => c.category && !DEFAULT_COMMODITIES.find(d => d.symbol === c.symbol));
+        state.pool = [...JSON.parse(JSON.stringify(DEFAULT_COMMODITIES)), ...userCustom];
+        state.version = APP_VERSION;
+        saveState();
+      }
       if (!state.lastBackup) state.lastBackup = null;
     } else {
       state.pool = JSON.parse(JSON.stringify(DEFAULT_COMMODITIES));
       state.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
     }
   } catch(e) {
+    console.warn('[FT] loadState 失败，使用默认数据:', e);
     state.pool = JSON.parse(JSON.stringify(DEFAULT_COMMODITIES));
     state.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
   }
@@ -276,7 +320,7 @@ function setLastUpdateTime(ts) {
 function fetchPriceFromEastMoney(secid) {
   return new Promise((resolve) => {
     const cbName = '_em_cb_' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-    const timeout = setTimeout(() => { cleanup(); resolve(null); }, 7000);
+    const timeout = setTimeout(() => { cleanup(); resolve(null); }, 4000);
 
     function cleanup() {
       clearTimeout(timeout);
@@ -304,25 +348,78 @@ function fetchPriceFromEastMoney(secid) {
   });
 }
 
-// === Sina Finance script-tag batch query ===
-function fetchPricesFromSina(symbols, symbolToPool) {
+// === Sina Finance batch query via fetch + CORS proxy ===
+// 新浪 hq.sinajs.cn 防盗链：GitHub Pages 的 Referer 会被 Forbidden
+// 改用 fetch + CORS 代理（allorigins.win）绕过 Referer 限制
+async function fetchPricesFromSina(symbols, symbolToPool) {
+  if (!symbols.length) return {ok:0, fail:0, total:0};
+  const codes = symbols.map(s => 'nf_' + s.toUpperCase());
+  const sinaUrl = 'https://hq.sinajs.cn/rn=' + Date.now() + '&list=' + codes.join(',');
+  // 尝试多个 CORS 代理
+  const proxies = [
+    function(url) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url); },
+    function(url) { return 'https://corsproxy.io/?url=' + encodeURIComponent(url); },
+    function(url) { return 'https://thingproxy.freeboard.io/fetch/' + url; }
+  ];
+
+  for (let i = 0; i < proxies.length; i++) {
+    try {
+      const proxyUrl = proxies[i](sinaUrl);
+      const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(6000) });
+      if (!resp.ok) { console.log('[FT] 新浪代理' + i + ' HTTP ' + resp.status); continue; }
+      const text = await resp.text();
+      if (!text || text.indexOf('Forbidden') >= 0 || text.indexOf('hq_str_') < 0) {
+        console.log('[FT] 新浪代理' + i + ' 返回无效内容');
+        continue;
+      }
+      // 解析返回的 var hq_str_nf_XXX="..." 行
+      let okCount = 0;
+      const lines = text.split('\n');
+      lines.forEach(line => {
+        const m = line.match(/var\s+hq_str_(\w+)\s*=\s*"([^"]*)"/);
+        if (!m) return;
+        const code = m[1];
+        const raw = m[2];
+        if (!raw) return;
+        const parts = raw.split(',');
+        // Sina futures format: [8]=latest, [7]=ask, [6]=bid, [3]=high, [4]=low, [2]=open, [5]=prev close
+        const tries = [8,7,6,3,4,2,5];
+        for (let j = 0; j < tries.length; j++) {
+          const p = parseFloat(parts[tries[j]]);
+          if (!isNaN(p) && p > 0) {
+            const origSymbol = code.replace('nf_', '').toUpperCase();
+            const c = symbolToPool[origSymbol] || symbolToPool[symbols.find(s => s.toUpperCase() === origSymbol)];
+            if (c) { c.price = p; fetchStatusMap[c.symbol] = 'ok'; okCount++; }
+            break;
+          }
+        }
+      });
+      console.log('[FT] 新浪代理' + i + ' 成功 ' + okCount + '/' + symbols.length);
+      if (okCount > 0) return {ok:okCount, fail:symbols.length - okCount, total:symbols.length};
+    } catch(e) {
+      console.log('[FT] 新浪代理' + i + ' 失败:', e.message);
+    }
+  }
+  // 所有代理都失败，尝试直接 script 标签方式（可能在非 GitHub Pages 环境工作）
+  return fetchPricesFromSinaScript(symbols, symbolToPool);
+}
+
+// Sina script-tag 方式（备用，GitHub Pages 会被 Forbidden，但本地开发环境可能工作）
+function fetchPricesFromSinaScript(symbols, symbolToPool) {
   return new Promise((resolve) => {
     if (!symbols.length) { resolve({ok:0,fail:0,total:0}); return; }
     const codes = symbols.map(s => 'nf_' + s.toUpperCase());
-    const cbName = '_sina_cb_' + Date.now();
-    const timeout = setTimeout(() => { cleanup(); resolve({ok:0,fail:symbols.length,total:symbols.length}); }, 10000);
+    const timeout = setTimeout(() => { cleanup(); resolve({ok:0,fail:symbols.length,total:symbols.length}); }, 6000);
 
     function cleanup() {
       clearTimeout(timeout);
-      delete window[cbName];
       const s = document.getElementById('sinaScript');
       if (s) s.remove();
     }
 
-    window[cbName] = function() {}; // placeholder
     const script = document.createElement('script');
     script.id = 'sinaScript';
-    script.src = `https://hq.sinajs.cn/rn=${Date.now()}&list=${codes.join(',')}`;
+    script.src = 'https://hq.sinajs.cn/rn=' + Date.now() + '&list=' + codes.join(',');
     script.onload = () => {
       cleanup();
       let okCount = 0;
@@ -331,7 +428,6 @@ function fetchPricesFromSina(symbols, symbolToPool) {
           const raw = window['hq_str_' + code];
           if (raw) {
             const parts = raw.split(',');
-            // Sina futures format: [8]=latest, [7]=ask, [6]=bid, [3]=high, [4]=low, [2]=open, [5]=prev close
             const tries = [8,7,6,3,4,2,5];
             for (let j = 0; j < tries.length; j++) {
               const p = parseFloat(parts[tries[j]]);
@@ -351,7 +447,48 @@ function fetchPricesFromSina(symbols, symbolToPool) {
   });
 }
 
-// === Combined fetch: East Money -> Sina -> Manual ===
+// === Tencent Finance batch query (JSONP via script tag) ===
+// 腾讯财经 qt.gtimg.cn 通常不检查 Referer，作为第三备用
+function fetchPricesFromTencent(symbols, symbolToPool, tencentMap) {
+  return new Promise((resolve) => {
+    if (!symbols.length) { resolve({ok:0,fail:0,total:0}); return; }
+    const codes = symbols.map(s => tencentMap[s] || s.toLowerCase());
+    const timeout = setTimeout(() => { cleanup(); resolve({ok:0,fail:symbols.length,total:symbols.length}); }, 6000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      const s = document.getElementById('tencentScript');
+      if (s) s.remove();
+    }
+
+    const script = document.createElement('script');
+    script.id = 'tencentScript';
+    script.src = 'https://qt.gtimg.cn/q=' + codes.join(',');
+    script.onload = () => {
+      cleanup();
+      let okCount = 0;
+      codes.forEach((code, idx) => {
+        try {
+          const raw = window['v_' + code];
+          if (raw) {
+            const parts = raw.split('~');
+            // 腾讯格式: [1]=最新价
+            const p = parseFloat(parts[1]);
+            if (!isNaN(p) && p > 0) {
+              const c = symbolToPool[symbols[idx]];
+              if (c) { c.price = p; fetchStatusMap[c.symbol] = 'ok'; okCount++; }
+            }
+          }
+        } catch(e) {}
+      });
+      resolve({ok:okCount, fail:symbols.length - okCount, total:symbols.length});
+    };
+    script.onerror = () => { cleanup(); resolve({ok:0, fail:symbols.length, total:symbols.length}); };
+    document.head.appendChild(script);
+  });
+}
+
+// === Combined fetch: East Money -> Sina(CORS proxy) -> Tencent -> Manual ===
 async function fetchPricesNow() {
   const t0 = Date.now();
 
@@ -363,13 +500,14 @@ async function fetchPricesNow() {
     return {ok:0, fail:0, total:0};
   }
 
+  console.log('[FT] 开始刷新行情, 池中品种:', state.pool.map(c => c.symbol).join(', '));
   setDataSourceStatus('loading', '数据源: 正在获取行情...');
 
   // Reset status
   fetchStatusMap = {};
   state.pool.forEach(c => { fetchStatusMap[c.symbol] = 'manual'; });
 
-  // Step 1: East Money (primary) per symbol
+  // Step 1: East Money (primary) per symbol - 并行查询
   let emOk = 0, emFail = [];
   const emPending = [];
   state.pool.forEach(c => {
@@ -385,11 +523,12 @@ async function fetchPricesNow() {
     }
   });
   await Promise.all(emPending);
+  console.log('[FT] 东财完成: 成功', emOk, '失败', emFail.length);
 
-  // Step 2: Sina (backup for failed items)
+  // Step 2: Sina (backup for failed items) - 通过 CORS 代理
   let sinaOk = 0;
-  if (emOk < state.pool.length && emFail.length) {
-    setDataSourceStatus('loading', `数据源: 东财${emOk}个成功, 尝试新浪备用...`);
+  if (emFail.length) {
+    setDataSourceStatus('loading', '数据源: 东财' + emOk + '个, 尝试新浪备用...');
     const sinaSymbols = [];
     const symbolToPool = {};
     emFail.forEach(sym => {
@@ -401,8 +540,27 @@ async function fetchPricesNow() {
       sinaOk = sina.ok;
     }
   }
+  console.log('[FT] 新浪完成: 成功', sinaOk);
 
-  const totalOk = emOk + sinaOk;
+  // Step 3: Tencent (third backup for still-failed items)
+  let tencentOk = 0;
+  const stillFailed = state.pool.filter(c => fetchStatusMap[c.symbol] !== 'ok' && fetchStatusMap[c.symbol] !== 'manual-ok');
+  if (stillFailed.length) {
+    setDataSourceStatus('loading', '数据源: 尝试腾讯备用...');
+    const tencentMap = {}; // 品种名 → 腾讯代码（小写）
+    state.pool.forEach(c => {
+      const meta = EXCHANGE_VARIETIES.find(v => v.symbol === c.symbol);
+      if (meta) tencentMap[c.symbol] = meta.code.toLowerCase() + '0';
+    });
+    const tencentSymbols = stillFailed.map(c => c.symbol);
+    const symbolToPool = {};
+    stillFailed.forEach(c => { symbolToPool[c.symbol] = c; });
+    const tc = await fetchPricesFromTencent(tencentSymbols, symbolToPool, tencentMap);
+    tencentOk = tc.ok;
+  }
+  console.log('[FT] 腾讯完成: 成功', tencentOk);
+
+  const totalOk = emOk + sinaOk + tencentOk;
   const elapsed = Date.now() - t0;
   const poolLen = state.pool.length;
 
@@ -410,14 +568,15 @@ async function fetchPricesNow() {
     saveState();
     if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool();
     onPriceUpdate();
-    const src = emOk > 0 ? '东财' : '新浪';
-    setDataSourceStatus('online', `数据源: ${src}行情 (${totalOk}/${poolLen} 成功) · ${elapsed}ms`);
+    const src = emOk > 0 ? '东财' : (sinaOk > 0 ? '新浪' : '腾讯');
+    setDataSourceStatus('online', '数据源: ' + src + '行情 (' + totalOk + '/' + poolLen + ' 成功) · ' + elapsed + 'ms');
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN'));
-    showToast(`已更新 ${totalOk} 个品种价格`);
+    showToast('已更新 ' + totalOk + ' 个品种价格');
   } else {
     setDataSourceStatus('offline', '数据源: 获取失败 · 已回退手动模式');
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN') + ' (失败)');
-    showToast('行情获取失败，使用手动数据');
+    showToast('行情获取失败，请检查网络或手动输入价格');
+    console.warn('[FT] 所有数据源均失败。东财secid格式可能需要更新，或网络受限。');
   }
 
   return {ok:totalOk, fail:poolLen - totalOk, total:poolLen};
@@ -612,15 +771,17 @@ function isSweetSignal(symbol) {
 function loadSettings() {
   const s = state.settings;
   const el = (id) => document.getElementById(id);
-  el('setInitEquity').value = s.initEquity;
-  el('setTarget').value = s.target;
-  el('setMaxRisk').value = s.maxRisk;
-  el('setMaxRiskSweet').value = s.maxRiskSweet;
-  el('setDrawdownWarn').value = s.drawdownWarn;
-  el('setCommission').value = s.commission;
-  el('setSlippage').value = s.slippage;
-  el('setDataSource').value = s.dataSource;
-  el('setApiUrl').value = s.apiUrl || '';
+  // 非设置页面不存在这些表单元素，必须判空，否则抛出 TypeError 导致后续 DOMContentLoaded 代码中断
+  const setVal = (id, val) => { const e = el(id); if (e) e.value = val; };
+  setVal('setInitEquity', s.initEquity);
+  setVal('setTarget', s.target);
+  setVal('setMaxRisk', s.maxRisk);
+  setVal('setMaxRiskSweet', s.maxRiskSweet);
+  setVal('setDrawdownWarn', s.drawdownWarn);
+  setVal('setCommission', s.commission);
+  setVal('setSlippage', s.slippage);
+  setVal('setDataSource', s.dataSource);
+  setVal('setApiUrl', s.apiUrl || '');
   updateHeaderStats();
 }
 
@@ -712,7 +873,7 @@ window.FTApp = {
   // 设置
   loadSettings, saveSettings,
   // 工具
-  escapeHtml, isSweetSignal,
+  escapeHtml, isSweetSignal, validateContract,
   // 常量
   FUND_DIMENSIONS, DEFAULT_COMMODITIES,
   EXCHANGE_VARIETIES, CATEGORY_ORDER,
