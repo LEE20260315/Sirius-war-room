@@ -285,6 +285,29 @@ const EASTMONEY_SYMBOL_MAP = {
   '多晶硅':'8.psm', '工业硅':'8.sim', '碳酸锂':'8.lcm'
 };
 
+// === futsseapi EastMoney 期货列表 API（支持 CORS，主力数据源）===
+// 市场码: 113=SHFE(上海期货), 114=DCE(大连商品)
+// CZCE/GFEX 不支持此 API，需走 push2 JSONP 备用
+const FUTSSE_MARKET_MAP = {
+  'SHFE': 113,
+  'DCE': 114
+};
+
+// 将品种的 contractCode 转换为 futsseapi 的 dm 格式
+// 主力连续 (XX0) → code.toLowerCase() + 'm'  (如 CU0 → cum)
+// 具体月份 (XX2509) → code.toLowerCase() + '2509' (如 RB2509 → rb2509)
+function contractToFutsseDm(contractCode, varietyMeta) {
+  if (!contractCode || !varietyMeta) return null;
+  const code = varietyMeta.code.toLowerCase();
+  const cc = contractCode.trim().toUpperCase();
+  // 主力连续
+  if (/^[A-Z]+0$/.test(cc)) return code + 'm';
+  // 具体月份合约
+  const m = cc.match(/^[A-Z]+(\d{3,4})$/);
+  if (m) return code + m[1];
+  return null;
+}
+
 // Sina Finance continuous contract mapping (backup)
 const SINA_SYMBOL_MAP = {
   // SHFE
@@ -488,7 +511,58 @@ function fetchPricesFromTencent(symbols, symbolToPool, tencentMap) {
   });
 }
 
-// === Combined fetch: East Money -> Sina(CORS proxy) -> Tencent -> Manual ===
+// === futsseapi 批量获取（支持 CORS，主力数据源）===
+// 一次请求获取整个市场的合约列表，本地匹配品种
+async function fetchPricesFromFutsseApi(poolItems) {
+  if (!poolItems || !poolItems.length) return {ok:0, fail:0, total:0};
+  // 按市场分组
+  const byMarket = {}; // marketCode → [{item, dm}]
+  poolItems.forEach(c => {
+    const meta = findVarietyMeta(c.symbol);
+    if (!meta || !meta.exchange) return;
+    const marketCode = FUTSSE_MARKET_MAP[meta.exchange];
+    if (!marketCode) return; // CZCE/GFEX 不支持
+    const dm = contractToFutsseDm(c.contractCode, meta);
+    if (!dm) return;
+    if (!byMarket[marketCode]) byMarket[marketCode] = [];
+    byMarket[marketCode].push({item: c, dm: dm});
+  });
+
+  let okCount = 0;
+  const markets = Object.keys(byMarket);
+  if (!markets.length) return {ok:0, fail:poolItems.length, total:poolItems.length};
+
+  // 并行请求各市场
+  const promises = markets.map(async (mc) => {
+    try {
+      const url = 'https://futsseapi.eastmoney.com/list/' + mc +
+        '?pageSize=300&pageIndex=0&token=58b2fa8f54668b7c01b3dde8e7a4ad4c&field=dm,p';
+      const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (!resp.ok) { console.log('[FT] futsseapi 市场', mc, 'HTTP', resp.status); return; }
+      const data = await resp.json();
+      if (!data || !data.list) return;
+      // 构建 dm → price 映射
+      const priceMap = {};
+      data.list.forEach(x => { if (x.dm && x.p) priceMap[x.dm] = x.p; });
+      // 匹配品种
+      byMarket[mc].forEach(entry => {
+        const p = priceMap[entry.dm];
+        if (p && p > 0) {
+          entry.item.price = p;
+          fetchStatusMap[entry.item.symbol] = 'ok';
+          okCount++;
+        }
+      });
+    } catch(e) {
+      console.log('[FT] futsseapi 市场', mc, '失败:', e.message);
+    }
+  });
+  await Promise.all(promises);
+  console.log('[FT] futsseapi 完成: 成功', okCount, '/', poolItems.length);
+  return {ok:okCount, fail:poolItems.length - okCount, total:poolItems.length};
+}
+
+// === Combined fetch: futsseapi(CORS) -> East Money JSONP -> Sina(CORS proxy) -> Tencent -> Manual ===
 async function fetchPricesNow() {
   const t0 = Date.now();
 
@@ -507,10 +581,17 @@ async function fetchPricesNow() {
   fetchStatusMap = {};
   state.pool.forEach(c => { fetchStatusMap[c.symbol] = 'manual'; });
 
-  // Step 1: East Money (primary) per symbol - 并行查询
+  // Step 0: futsseapi（CORS 直连，主力数据源）- SHFE/DCE 市场
+  setDataSourceStatus('loading', '数据源: 正在获取行情...');
+  const futsseResult = await fetchPricesFromFutsseApi(state.pool);
+  let futsseOk = futsseResult.ok;
+  console.log('[FT] futsseapi 完成: 成功', futsseOk);
+
+  // Step 1: East Money JSONP (secondary) - 仅处理 futsseapi 未成功的品种
   let emOk = 0, emFail = [];
   const emPending = [];
   state.pool.forEach(c => {
+    if (fetchStatusMap[c.symbol] === 'ok') return; // futsseapi 已成功，跳过
     const secid = EASTMONEY_SYMBOL_MAP[c.symbol];
     if (secid) {
       emPending.push((async () => {
@@ -523,12 +604,12 @@ async function fetchPricesNow() {
     }
   });
   await Promise.all(emPending);
-  console.log('[FT] 东财完成: 成功', emOk, '失败', emFail.length);
+  console.log('[FT] 东财JSONP完成: 成功', emOk, '失败', emFail.length);
 
   // Step 2: Sina (backup for failed items) - 通过 CORS 代理
   let sinaOk = 0;
   if (emFail.length) {
-    setDataSourceStatus('loading', '数据源: 东财' + emOk + '个, 尝试新浪备用...');
+    setDataSourceStatus('loading', '数据源: futsseapi ' + futsseOk + '个, 东财 ' + emOk + '个, 尝试新浪备用...');
     const sinaSymbols = [];
     const symbolToPool = {};
     emFail.forEach(sym => {
@@ -560,7 +641,7 @@ async function fetchPricesNow() {
   }
   console.log('[FT] 腾讯完成: 成功', tencentOk);
 
-  const totalOk = emOk + sinaOk + tencentOk;
+  const totalOk = futsseOk + emOk + sinaOk + tencentOk;
   const elapsed = Date.now() - t0;
   const poolLen = state.pool.length;
 
@@ -568,8 +649,8 @@ async function fetchPricesNow() {
     saveState();
     if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool();
     onPriceUpdate();
-    const src = emOk > 0 ? '东财' : (sinaOk > 0 ? '新浪' : '腾讯');
-    setDataSourceStatus('online', '数据源: ' + src + '行情 (' + totalOk + '/' + poolLen + ' 成功) · ' + elapsed + 'ms');
+    const src = futsseOk > 0 ? '东财futsseapi' : (emOk > 0 ? '东财JSONP' : (sinaOk > 0 ? '新浪' : '腾讯'));
+    setDataSourceStatus('online', '数据源: ' + src + ' (' + totalOk + '/' + poolLen + ' 成功) · ' + elapsed + 'ms');
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN'));
     showToast('已更新 ' + totalOk + ' 个品种价格');
   } else {
