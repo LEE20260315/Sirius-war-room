@@ -193,6 +193,116 @@
         mask-position: center;
         background-color: currentColor;
       }
+/* Page enter transition - 消除切换闪烁 */
+.page-enter { animation: pageEnter 0.3s cubic-bezier(0.4,0,0.2,1); }
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter { animation: none; }
+}
+/* 外部基本面信号面板 */
+.external-fund-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-edge-subtle);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1);
+}
+.external-fund-panel .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-edge-faint);
+}
+.external-fund-panel .panel-title {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  color: var(--color-ink-secondary);
+  font-weight: 500;
+}
+.external-fund-panel .panel-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-ink-dim);
+}
+.external-fund-panel .panel-metrics {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.external-fund-panel .metric-score {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--color-brand-500);
+  line-height: 1;
+}
+.external-fund-panel .metric-change {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+.external-fund-panel .metric-change.up { color: var(--color-success); }
+.external-fund-panel .metric-change.down { color: var(--color-error); }
+.external-fund-panel .metric-change.flat { color: var(--color-ink-muted); }
+/* 档位徽章 - 沿用 Claude 设计 token */
+.level-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.level-badge.level-加仓 { background: var(--color-success-bg); color: var(--color-success); border: 1px solid var(--color-success-border); }
+.level-badge.level-底仓 { background: rgba(217,119,87,0.12); color: var(--color-brand-500); border: 1px solid var(--color-brand-500); }
+.level-badge.level-不动 { background: var(--color-surface-muted); color: var(--color-ink-muted); border: 1px solid var(--color-edge-subtle); }
+.level-badge.level-警惕拥挤 { background: var(--color-error-bg); color: var(--color-error); border: 1px solid var(--color-error-border); }
+.external-fund-panel .panel-summary {
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: var(--color-surface-dim);
+  border-radius: 6px;
+}
+.external-fund-panel .panel-alert {
+  font-size: 11px;
+  color: var(--color-warning);
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: rgba(253,216,53,0.08);
+  border-radius: 6px;
+  border-left: 3px solid var(--color-warning);
+}
+.external-fund-panel .panel-excerpt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-ink-dim);
+  background: var(--color-surface-dim);
+  border-radius: 6px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+.external-fund-panel .panel-empty {
+  text-align: center;
+  padding: 16px;
+  color: var(--color-ink-dim);
+  font-style: italic;
+  font-family: var(--font-serif);
+  font-size: 13px;
+}
     </style>
 </head>
 <body class="bg-surface-base text-ink font-sans min-h-screen">
@@ -213,7 +323,7 @@
       <span>自动刷新</span>
       <label class="switch"><input type="checkbox" id="autoRefreshToggle" onchange="FTApp.toggleAutoRefresh()"><span class="slider"></span></label>
     </label>
-    <span>间隔: <select id="refreshInterval" onchange="FTApp.updateRefreshInterval()" class="p-0.5 border border-edge rounded text-xs bg-surface text-ink"><option value="30">30秒</option><option value="60" selected>60秒</option><option value="120">2分钟</option><option value="300">5分钟</option></select></span>
+    <span>间隔: <select id="refreshInterval" onchange="FTApp.updateRefreshInterval()" class="p-0.5 border border-edge rounded text-xs bg-surface text-ink"><option value="60" selected>1分钟</option><option value="300">5分钟</option><option value="1800">30分钟</option><option value="3600">1小时</option></select></span>
     <span id="dataSourceStatus"><span class="status-dot offline"></span>数据源: 手动模式</span>
     <span id="lastUpdateTime">最近更新: --</span>
   </div>
@@ -228,7 +338,7 @@
   <a href="dashboard.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">仪表盘</a>
   <a href="settings.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">设置</a>
 </nav>
-<main class="max-w-7xl mx-auto px-5 py-6">
+<main class="max-w-7xl mx-auto px-5 py-6 page-enter">
   <div class="mb-6">
     <h2 class="font-serif text-xl text-ink-secondary mb-1">基本面分析</h2>
     <p class="text-xs text-ink-dim">五维度评分体系 · 供需/库存/基差/宏观/技术</p>
@@ -239,6 +349,10 @@
     <select id="fundSpeciesSelect" onchange="FTRender.loadFundamental()" class="p-2 border border-edge-subtle rounded-sm bg-surface text-ink text-sm font-mono min-w-[120px]">
       <option value="">-- 请选择 --</option>
     </select>
+  </div>
+  <!-- 外部基本面信号面板（每日日报） -->
+  <div id="externalFundPanel" class="external-fund-panel">
+    <div class="panel-empty">请先选择品种</div>
   </div>
   <!-- 5-Dimension Scoring Table -->
   <div class="bg-surface rounded-lg border border-edge-subtle shadow-sm overflow-hidden mb-4">
@@ -304,7 +418,7 @@
 <script src="../shared/chart-engine.js"></script>
 <script src="../shared/ui-core.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
   FTApp.initTheme();
   FTApp.loadState();
   FTApp.loadSettings();
@@ -312,7 +426,10 @@ document.addEventListener('DOMContentLoaded', function() {
   FTApp.initAutoBackup();
   FTApp.updateBackupDisplay();
   FTApp.populateFundSelect();
+  // 异步加载飞书日报基本面数据，再渲染初始面板
+  await FTRender.loadFundamentalFeed();
   FTRender.loadFundamental();
+  FTRender.renderExternalFundSignal();
 });
 </script>
 
