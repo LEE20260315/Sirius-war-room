@@ -536,7 +536,7 @@ async function fetchPricesFromFutsseApi(poolItems) {
   const promises = markets.map(async (mc) => {
     try {
       const url = 'https://futsseapi.eastmoney.com/list/' + mc +
-        '?pageSize=300&pageIndex=0&token=58b2fa8f54668b7c01b3dde8e7a4ad4c&field=dm,p';
+        '?orderBy=zdf&sort=desc&pageSize=300&pageIndex=0&token=58b2fa8f54668b7c01b3dde8e7a4ad4c&field=dm,sc,p,zsjd';
       const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
       if (!resp.ok) { console.log('[FT] futsseapi 市场', mc, 'HTTP', resp.status); return; }
       const data = await resp.json();
