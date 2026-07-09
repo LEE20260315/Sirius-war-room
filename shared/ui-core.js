@@ -65,6 +65,59 @@
     dl.innerHTML = opts;
   }
 
+  // 分位%单元格：数值 + mini-bar（颜色：≤25绿/≤50黄/≤75橙/>75红）
+  function renderPercentileCell(pct) {
+    if (pct == null || pct === 0) return '<span class="text-ink-muted">--</span>';
+    var color = pct <= 25 ? '#8ca06f' : (pct <= 50 ? '#d4b656' : (pct <= 75 ? '#e08d6f' : '#ef4444'));
+    return '<div style="display:flex;align-items:center;gap:4px">' +
+      '<span class="font-mono text-xs" style="color:' + color + ';min-width:24px">' + pct + '</span>' +
+      '<div style="width:40px;height:6px;background:#2a2823;border-radius:3px;overflow:hidden">' +
+        '<div style="width:' + pct + '%;height:100%;background:' + color + '"></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // 价差单元格：price-costLine，正绿负红
+  function renderDiffCell(price, costLine) {
+    if (!price || price <= 0 || !costLine || costLine <= 0) return '<span class="text-ink-muted">--</span>';
+    var diff = price - costLine;
+    var color = diff >= 0 ? '#8ca06f' : '#ef4444';
+    var sign = diff >= 0 ? '+' : '';
+    return '<span class="font-mono text-xs" style="color:' + color + '">' + sign + diff.toFixed(0) + '</span>';
+  }
+
+  // 价差%单元格：(price-costLine)/price*100
+  function renderDiffPctCell(price, costLine) {
+    if (!price || price <= 0 || !costLine || costLine <= 0) return '<span class="text-ink-muted">--</span>';
+    var pct = (price - costLine) / price * 100;
+    var color = pct >= 0 ? '#8ca06f' : '#ef4444';
+    var sign = pct >= 0 ? '+' : '';
+    return '<span class="font-mono text-xs" style="color:' + color + '">' + sign + pct.toFixed(2) + '%</span>';
+  }
+
+  // 成本线输入框：costLine=0 时自动回填参考值，灰色标注"参考"
+  function renderCostInput(c) {
+    var val = c.costLine || 0;
+    var isRef = false;
+    if (val === 0) {
+      var ref = FTApp.getCostReference ? FTApp.getCostReference(c.symbol) : null;
+      if (ref && ref.costDomestic > 0) { val = ref.costDomestic; isRef = true; }
+      else if (ref && ref.costImport > 0) { val = ref.costImport; isRef = true; }
+    }
+    var style = isRef ? 'width:84px;color:#908e84' : 'width:84px';
+    var badge = isRef ? ' <span class="text-xs" style="color:#908e84" title="参考值">参</span>' : '';
+    return '<input type="number" value="' + val + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="cost-input ' + CELL_INPUT + '" style="' + style + '">' + badge;
+  }
+
+  // 获取有效成本（含自动回填的参考值）
+  function getEffectiveCost(c) {
+    if (c.costLine && c.costLine > 0) return c.costLine;
+    var ref = FTApp.getCostReference ? FTApp.getCostReference(c.symbol) : null;
+    if (ref && ref.costDomestic > 0) return ref.costDomestic;
+    if (ref && ref.costImport > 0) return ref.costImport;
+    return 0;
+  }
+
   var FTRender = {
     // ============ 1. 观察池渲染 ============
     renderPool: function () {
@@ -72,7 +125,7 @@
       if (!body) return;
       var pool = FTApp.state.pool || [];
       if (!pool.length) {
-        body.innerHTML = '<tr><td colspan="9" class="empty-state">观察池为空，点击"添加品种"开始</td></tr>';
+        body.innerHTML = '<tr><td colspan="11" class="empty-state">观察池为空，点击"添加品种"开始</td></tr>';
         ensureContractList();
         return;
       }
@@ -86,7 +139,7 @@
       var lastCat = null;
       sorted.forEach(function (c) {
         if (c.category !== lastCat) {
-          html += '<tr class="bg-surface-dim"><td colspan="9" class="py-2 px-3 font-serif text-xs text-ink-muted uppercase tracking-wider">' +
+          html += '<tr class="bg-surface-dim"><td colspan="11" class="py-2 px-3 font-serif text-xs text-ink-muted uppercase tracking-wider">' +
             FTApp.escapeHtml(c.category || '其他') + '</td></tr>';
           lastCat = c.category;
         }
@@ -97,8 +150,10 @@
           '<td class="py-2 px-3"><input type="number" value="' + (c.multiplier || 0) + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="mult-input ' + CELL_INPUT + '" style="width:72px"></td>' +
           '<td class="py-2 px-3"><input type="number" step="0.01" value="' + (c.marginRate || 0) + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="margin-input ' + CELL_INPUT + '" style="width:72px"></td>' +
           '<td class="py-2 px-3 font-mono text-ink-secondary">' + priceTxt + '</td>' +
-          '<td class="py-2 px-3 font-mono text-ink-secondary">' + (c.percentile != null ? c.percentile : '--') + '</td>' +
-          '<td class="py-2 px-3"><input type="number" value="' + (c.costLine || 0) + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="cost-input ' + CELL_INPUT + '" style="width:84px"></td>' +
+          '<td class="py-2 px-3">' + renderPercentileCell(c.percentile) + '</td>' +
+          '<td class="py-2 px-3">' + renderCostInput(c) + '</td>' +
+          '<td class="py-2 px-3">' + renderDiffCell(c.price, getEffectiveCost(c)) + '</td>' +
+          '<td class="py-2 px-3">' + renderDiffPctCell(c.price, getEffectiveCost(c)) + '</td>' +
           '<td class="py-2 px-3">' + statusBadge(c.status) + '</td>' +
           '<td class="py-2 px-3"><button onclick="FTRender.removePoolRow(\'' + FTApp.escapeHtml(c.symbol) + '\')" class="text-error text-xs hover:underline">删除</button></td>' +
           '</tr>';
@@ -322,12 +377,33 @@
         var v = feed.records[0].varieties && feed.records[0].varieties[feishuName];
         if (v && v.score != null) { hasExternal = true; extScore = v.score; }
       }
+      // 估值维度自动填充
+      var autoValScore = 0;
+      var autoValSource = '';
+      if (hasExternal && extScore != null) {
+        // 有外部日报：综合分≥60→8, ≥45→6, ≥30→4, <30→2
+        autoValScore = extScore >= 60 ? 8 : (extScore >= 45 ? 6 : (extScore >= 30 ? 4 : 2));
+        autoValSource = '外部日报(' + extScore.toFixed(1) + '分)';
+      } else {
+        // 无外部数据：基于百分位
+        var poolItem = FTApp.state.pool.find(function(x){return x.symbol === sym;});
+        var pct = poolItem ? poolItem.percentile : 0;
+        if (pct && pct > 0) {
+          autoValScore = pct <= 20 ? 8 : (pct <= 35 ? 6 : (pct <= 50 ? 4 : 2));
+          autoValSource = '百分位(' + pct + '%)';
+        }
+      }
       dims.forEach(function (d) {
         var sInp = el(d[0]), nInp = el(d[1]);
         if (!sInp) return;
         var data = fund[d[2]] || {};
-        // 未评分时默认0分（不再默认5分），强制用户主动评分
-        var score = (data.score != null) ? data.score : 0;
+        var score;
+        // 基差结构维度（fundBasis/basis）自动填充估值分数
+        if (d[2] === 'basis' && !data.score && data.score !== 0) {
+          score = autoValScore;
+        } else {
+          score = (data.score != null) ? data.score : 0;
+        }
         sInp.value = score;
         if (sInp.nextElementSibling) sInp.nextElementSibling.textContent = score;
         if (nInp) nInp.value = data.note || '';
@@ -336,9 +412,12 @@
       var hint = el('fundHint');
       if (hint) {
         if (hasExternal) {
-          hint.innerHTML = '<span style="color:#8ca06f">📊 外部日报：' + FTApp.escapeHtml(sym) + ' 综合分 ' + extScore.toFixed(1) + '（可参考填充下方维度，0分=未评分需手动填写）</span>';
+          hint.innerHTML = '<span style="color:#8ca06f">📊 外部日报：' + FTApp.escapeHtml(sym) + ' 综合分 ' + extScore.toFixed(1) +
+            (autoValSource ? ' · 估值维度已根据' + autoValSource + '自动填充' : '') + '</span>';
+        } else if (autoValSource) {
+          hint.innerHTML = '<span style="color:#8ca06f">📈 ' + FTApp.escapeHtml(sym) + ' 估值维度已根据' + autoValSource + '自动推算，其他维度请手动评分</span>';
         } else {
-          hint.innerHTML = '<span style="color:#e08d6f">⚠ ' + FTApp.escapeHtml(sym) + ' 无外部日报数据，请手动填写各维度评分（0分=未评分）</span>';
+          hint.innerHTML = '<span style="color:#e08d6f">⚠ ' + FTApp.escapeHtml(sym) + ' 无外部日报数据且无百分位，请手动填写各维度评分</span>';
         }
       }
       this.updateFundTotal();
@@ -386,18 +465,33 @@
       var html = '';
       pool.forEach(function (c) {
         var p = c.percentile || 0;
-        var valLight = p <= 25 ? 'green' : (p <= 50 ? 'yellow' : 'red');
+        // 估值灯：基于真实 percentile
+        var valLight = p === 0 ? 'yellow' : (p <= 25 ? 'green' : (p <= 50 ? 'yellow' : 'red'));
+        // 基本面灯：基于 isSweetSignal 真实结果
         var fundLight = FTApp.isSweetSignal(c.symbol) ? 'green' : 'yellow';
-        var rate, rateLight;
-        if (valLight === 'green' && fundLight === 'green') { rate = '买入'; rateLight = 'green'; }
-        else if (valLight === 'red') { rate = '回避'; rateLight = 'red'; }
+        // 资金/趋势灯：百分位+成本价差联合判断
+        // 获取有效成本
+        var effCost = c.costLine || 0;
+        if (effCost === 0 && FTApp.getCostReference) {
+          var ref = FTApp.getCostReference(c.symbol);
+          if (ref && ref.costDomestic > 0) effCost = ref.costDomestic;
+          else if (ref && ref.costImport > 0) effCost = ref.costImport;
+        }
+        var costDiff = (c.price && effCost > 0) ? (c.price - effCost) : 0;
+        var rateLight, rate;
+        if (p > 75) { rate = '回避'; rateLight = 'red'; }
+        else if (p <= 25 && costDiff < 0 && fundLight === 'green') { rate = '买入'; rateLight = 'green'; }
+        else if (p <= 25 && costDiff < 0) { rate = '加仓'; rateLight = 'green'; }
         else { rate = '观望'; rateLight = 'yellow'; }
         var rateCls = rateLight === 'green' ? 'text-success' : (rateLight === 'red' ? 'text-error' : 'text-ink-muted');
-        var detail = '估值分位 ' + p + '%，基本面' + (fundLight === 'green' ? '甜点' : '一般');
+        // 详情列
+        var costStr = costDiff !== 0 ? (costDiff > 0 ? '成本上+' : '成本下') + Math.abs(costDiff).toFixed(0) : '无成本数据';
+        var fundStr = fundLight === 'green' ? '甜点' : '一般';
+        var detail = '估值' + (p > 0 ? p + '%' : '无数据') + '，' + costStr + '，基本面' + fundStr;
         html += '<tr>' +
           '<td class="py-2 px-4 text-ink">' + FTApp.escapeHtml(c.symbol) + '</td>' +
           '<td class="py-2 px-4"><span class="signal-light signal-' + valLight + '"></span></td>' +
-          '<td class="py-2 px-4"><span class="signal-light signal-yellow"></span></td>' +
+          '<td class="py-2 px-4"><span class="signal-light signal-' + rateLight + '"></span></td>' +
           '<td class="py-2 px-4"><span class="signal-light signal-' + fundLight + '"></span></td>' +
           '<td class="py-2 px-4"><span class="px-2 py-0.5 rounded text-xs font-medium ' + rateCls + '">' + rate + '</span></td>' +
           '<td class="py-2 px-4 text-xs text-ink-dim">' + FTApp.escapeHtml(detail) + '</td>' +

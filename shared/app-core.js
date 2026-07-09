@@ -525,6 +525,13 @@ async function fetchPricesNow() {
   const stillManual = poolLen - totalOk;
 
   if (totalOk > 0) {
+    // 百分位自动计算：对每个有价格的品种更新 percentile
+    state.pool.forEach(c => {
+      if (c.price && c.price > 0) {
+        const pct = computePercentile(c.symbol, c.price);
+        if (pct !== null) c.percentile = pct;
+      }
+    });
     saveState();
     if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool();
     onPriceUpdate();
@@ -721,14 +728,63 @@ function populateFundSelect() {
   sel.innerHTML = html;
 }
 
+// 静态数据缓存（init 时异步加载，不阻塞渲染）
+let priceHistory = null;  // {records: [...], updated, source}
+let costReference = null; // {records: [...], updated, source}
+
+async function loadPriceHistory() {
+  try {
+    const resp = await fetch('shared/price-history.json');
+    if (!resp.ok) throw new Error('http ' + resp.status);
+    priceHistory = await resp.json();
+    console.log('[FT] 历史价格区间加载成功:', priceHistory.records.length, '个品种');
+  } catch(e) {
+    console.warn('[FT] 历史价格区间加载失败:', e.message);
+    priceHistory = null;
+  }
+}
+
+async function loadCostReference() {
+  try {
+    const resp = await fetch('shared/cost-reference.json');
+    if (!resp.ok) throw new Error('http ' + resp.status);
+    costReference = await resp.json();
+    console.log('[FT] 成本参考加载成功:', costReference.records.length, '个品种');
+  } catch(e) {
+    console.warn('[FT] 成本参考加载失败:', e.message);
+    costReference = null;
+  }
+}
+
+// 百分位计算：基于近3年价格区间，(price-low)/(high-low)*100，钳制[0,100]
+// 无历史数据返回 null（UI 显示 -- 而非 0）
+function computePercentile(symbol, price) {
+  if (!priceHistory || !priceHistory.records || !price || price <= 0) return null;
+  const rec = priceHistory.records.find(r => r.symbol === symbol);
+  if (!rec || !rec.low || !rec.high || rec.high <= rec.low) return null;
+  let pct = (price - rec.low) / (rec.high - rec.low) * 100;
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  return pct;
+}
+
+// 获取品种成本参考（用于观察池自动回填）
+function getCostReference(symbol) {
+  if (!costReference || !costReference.records) return null;
+  return costReference.records.find(r => r.symbol === symbol) || null;
+}
+
 function isSweetSignal(symbol) {
   const c = state.pool.find(x => x.symbol === symbol);
   if (!c) return false;
+  // percentile 为 null/undefined/0(未计算) 时返回 false，不误判甜点
+  if (c.percentile == null || c.percentile === 0) return false;
+  // 估值分：基于真实 percentile（不再因 0 误判为 5）
+  const valScore = c.percentile <= 20 ? 5 : c.percentile <= 35 ? 4 : c.percentile <= 50 ? 2 : 1;
   const fund = state.fundamentals[c.symbol] || {};
-  const valScore = c.percentile <= 25 ? 5 : c.percentile <= 40 ? 3 : 1;
-  const supplyScore = (fund.supply && fund.supply.score) || 3;
-  const catalystScore = (fund.catalyst && fund.catalyst.score) || 3;
-  return valScore >= 4 && supplyScore >= 4 && catalystScore >= 4;
+  const supplyScore = (fund.supply && fund.supply.score) || 0;
+  const inventoryScore = (fund.inventory && fund.inventory.score) || 0;
+  // 基本面甜点：估值分≥4 AND 供需≥6 AND 库存≥6（阈值从4调整为6，更严格）
+  return valScore >= 4 && supplyScore >= 6 && inventoryScore >= 6;
 }
 
 // ============ SETTINGS (form load/save) ============
@@ -792,6 +848,9 @@ function init() {
   const theme = localStorage.getItem('futures_theme');
   if (theme) document.documentElement.setAttribute('data-theme', theme);
   loadState();
+  // 异步加载历史价格区间和成本参考（不阻塞渲染）
+  loadPriceHistory();
+  loadCostReference();
   if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool();
   loadSettings();
   populateFundSelect();
@@ -842,5 +901,9 @@ window.FTApp = {
   FUND_DIMENSIONS, DEFAULT_COMMODITIES,
   EXCHANGE_VARIETIES, CATEGORY_ORDER,
   FEISHU_VARIETY_MAP, PROJECT_TO_FEISHU_MAP,
-  findVarietyMeta
+  findVarietyMeta,
+  // 百分位/成本参考
+  computePercentile, getCostReference, loadPriceHistory, loadCostReference,
+  priceHistory: () => priceHistory,  // 用函数返回避免导出时为null
+  costReference: () => costReference
 };
