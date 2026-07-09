@@ -3,54 +3,54 @@
 // auto-refresh, theme toggle, backup/import/export, and init function.
 
 // ============ VERSION ============
-const APP_VERSION = '2026.06.22-v6';
+const APP_VERSION = '2026.07.09-v7';
 
 // ============ DATA STORE ============
 // 交易所分类品种主数据：覆盖国内五大期货交易所
 // exchange: SHFE(上海期货) / DCE(大连商品) / CZCE(郑州商品) / GFEX(广州期货) / CFFEX(中金所)
 // category: 农产品 / 黑色系 / 有色金属 / 贵金属 / 能源化工 / 新能源 / 股指
 const EXCHANGE_VARIETIES = [
-  // 上海期货交易所 (SHFE)
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'铜',code:'CU',multiplier:5,marginRate:0.09,defaultContract:'CU0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'铝',code:'AL',multiplier:5,marginRate:0.08,defaultContract:'AL0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'锌',code:'ZN',multiplier:5,marginRate:0.08,defaultContract:'ZN0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'镍',code:'NI',multiplier:1,marginRate:0.12,defaultContract:'NI0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'贵金属',symbol:'黄金',code:'AU',multiplier:1000,marginRate:0.08,defaultContract:'AU0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'贵金属',symbol:'白银',code:'AG',multiplier:15,marginRate:0.10,defaultContract:'AG0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'黑色系',symbol:'螺纹钢',code:'RB',multiplier:10,marginRate:0.10,defaultContract:'RB0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'黑色系',symbol:'热卷',code:'HC',multiplier:10,marginRate:0.10,defaultContract:'HC0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'黑色系',symbol:'铁矿石',code:'I',multiplier:100,marginRate:0.12,defaultContract:'I0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'能源化工',symbol:'天然橡胶',code:'RU',multiplier:10,marginRate:0.12,defaultContract:'RU0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'能源化工',symbol:'沥青',code:'BU',multiplier:10,marginRate:0.08,defaultContract:'BU0'},
-  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'能源化工',symbol:'纸浆',code:'SP',multiplier:10,marginRate:0.08,defaultContract:'SP0'},
+  // 上海期货交易所 (SHFE) — defaultContract 为当前主力月份（2026-07，动态维护）
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'铜',code:'CU',multiplier:5,marginRate:0.09,defaultContract:'CU2609'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'铝',code:'AL',multiplier:5,marginRate:0.08,defaultContract:'AL2610'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'锌',code:'ZN',multiplier:5,marginRate:0.08,defaultContract:'ZN2610'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'有色金属',symbol:'镍',code:'NI',multiplier:1,marginRate:0.12,defaultContract:'NI2609'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'贵金属',symbol:'黄金',code:'AU',multiplier:1000,marginRate:0.08,defaultContract:'AU2608'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'贵金属',symbol:'白银',code:'AG',multiplier:15,marginRate:0.10,defaultContract:'AG2608'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'黑色系',symbol:'螺纹钢',code:'RB',multiplier:10,marginRate:0.10,defaultContract:'RB2610'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'黑色系',symbol:'热卷',code:'HC',multiplier:10,marginRate:0.10,defaultContract:'HC2610'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'黑色系',symbol:'铁矿石',code:'I',multiplier:100,marginRate:0.12,defaultContract:'I2609'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'能源化工',symbol:'天然橡胶',code:'RU',multiplier:10,marginRate:0.12,defaultContract:'RU2609'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'能源化工',symbol:'沥青',code:'BU',multiplier:10,marginRate:0.08,defaultContract:'BU2609'},
+  {exchange:'SHFE',exchangeName:'上海期货交易所',category:'能源化工',symbol:'纸浆',code:'SP',multiplier:10,marginRate:0.08,defaultContract:'SP2609'},
   // 大连商品交易所 (DCE)
-  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'棕榈油',code:'P',multiplier:10,marginRate:0.08,defaultContract:'P0'},
-  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'玉米',code:'C',multiplier:10,marginRate:0.08,defaultContract:'C0'},
-  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'豆粕',code:'M',multiplier:10,marginRate:0.08,defaultContract:'M0'},
-  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'豆油',code:'Y',multiplier:10,marginRate:0.08,defaultContract:'Y0'},
-  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'生猪',code:'LH',multiplier:16,marginRate:0.12,defaultContract:'LH0'},
-  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'PVC',code:'V',multiplier:5,marginRate:0.08,defaultContract:'V0'},
-  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'聚丙烯PP',code:'PP',multiplier:5,marginRate:0.08,defaultContract:'PP0'},
-  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'塑料LLDPE',code:'L',multiplier:5,marginRate:0.08,defaultContract:'L0'},
-  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'乙二醇',code:'EG',multiplier:10,marginRate:0.08,defaultContract:'EG0'},
-  // 郑州商品交易所 (CZCE)
-  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'白糖',code:'SR',multiplier:10,marginRate:0.08,defaultContract:'SR0'},
-  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'棉花',code:'CF',multiplier:5,marginRate:0.08,defaultContract:'CF0'},
-  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'苹果',code:'AP',multiplier:10,marginRate:0.10,defaultContract:'AP0'},
-  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'甲醇',code:'MA',multiplier:10,marginRate:0.08,defaultContract:'MA0'},
-  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'玻璃',code:'FG',multiplier:20,marginRate:0.08,defaultContract:'FG0'},
-  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'纯碱',code:'SA',multiplier:20,marginRate:0.08,defaultContract:'SA0'},
-  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'尿素',code:'UR',multiplier:20,marginRate:0.08,defaultContract:'UR0'},
-  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'烧碱',code:'SH',multiplier:30,marginRate:0.08,defaultContract:'SH0'},
-  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'PTA',code:'TA',multiplier:5,marginRate:0.08,defaultContract:'TA0'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'棕榈油',code:'P',multiplier:10,marginRate:0.08,defaultContract:'P2609'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'玉米',code:'C',multiplier:10,marginRate:0.08,defaultContract:'C2609'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'豆粕',code:'M',multiplier:10,marginRate:0.08,defaultContract:'M2609'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'豆油',code:'Y',multiplier:10,marginRate:0.08,defaultContract:'Y2609'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'农产品',symbol:'生猪',code:'LH',multiplier:16,marginRate:0.12,defaultContract:'LH2609'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'PVC',code:'V',multiplier:5,marginRate:0.08,defaultContract:'V2609'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'聚丙烯PP',code:'PP',multiplier:5,marginRate:0.08,defaultContract:'PP2609'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'塑料LLDPE',code:'L',multiplier:5,marginRate:0.08,defaultContract:'L2609'},
+  {exchange:'DCE',exchangeName:'大连商品交易所',category:'能源化工',symbol:'乙二醇',code:'EG',multiplier:10,marginRate:0.08,defaultContract:'EG2609'},
+  // 郑州商品交易所 (CZCE) — 新浪连续代码 XX0 用于手动价格查询
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'白糖',code:'SR',multiplier:10,marginRate:0.08,defaultContract:'SR509'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'棉花',code:'CF',multiplier:5,marginRate:0.08,defaultContract:'CF509'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'苹果',code:'AP',multiplier:10,marginRate:0.10,defaultContract:'AP510'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'甲醇',code:'MA',multiplier:10,marginRate:0.08,defaultContract:'MA509'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'玻璃',code:'FG',multiplier:20,marginRate:0.08,defaultContract:'FG509'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'纯碱',code:'SA',multiplier:20,marginRate:0.08,defaultContract:'SA509'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'尿素',code:'UR',multiplier:20,marginRate:0.08,defaultContract:'UR509'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'烧碱',code:'SH',multiplier:30,marginRate:0.08,defaultContract:'SH509'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'PTA',code:'TA',multiplier:5,marginRate:0.08,defaultContract:'TA509'},
   // 广州期货交易所 (GFEX)
-  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'多晶硅',code:'PS',multiplier:3,marginRate:0.12,defaultContract:'PS0'},
-  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'工业硅',code:'SI',multiplier:5,marginRate:0.12,defaultContract:'SI0'},
-  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'碳酸锂',code:'LC',multiplier:1,marginRate:0.15,defaultContract:'LC0'},
+  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'多晶硅',code:'PS',multiplier:3,marginRate:0.12,defaultContract:'PS2509'},
+  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'工业硅',code:'SI',multiplier:5,marginRate:0.12,defaultContract:'SI2509'},
+  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'碳酸锂',code:'LC',multiplier:1,marginRate:0.15,defaultContract:'LC2511'},
   // 中国金融期货交易所 (CFFEX)
-  {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'沪深300',code:'IF',multiplier:300,marginRate:0.12,defaultContract:'IF0'},
-  {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'上证50',code:'IH',multiplier:300,marginRate:0.12,defaultContract:'IH0'},
-  {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'中证500',code:'IC',multiplier:200,marginRate:0.14,defaultContract:'IC0'}
+  {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'沪深300',code:'IF',multiplier:300,marginRate:0.12,defaultContract:'IF2608'},
+  {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'上证50',code:'IH',multiplier:300,marginRate:0.12,defaultContract:'IH2608'},
+  {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'中证500',code:'IC',multiplier:200,marginRate:0.14,defaultContract:'IC2608'}
 ];
 
 // 板块分类显示顺序
@@ -74,52 +74,58 @@ function findVarietyMeta(symbol) {
   return EXCHANGE_VARIETIES.find(v => v.symbol === symbol);
 }
 
-// 合约代码纠错：检查格式和是否过期
-// 返回 { valid: bool, warning: string|null }
+// 合约代码纠错：检查格式、前缀匹配、是否过期或即将到期
+// 返回 { valid: bool, warning: string|null, level: 'ok'|'warn'|'error' }
 function validateContract(contractCode, varietySymbol) {
-  if (!contractCode) return { valid: false, warning: '合约代码不能为空' };
+  if (!contractCode) return { valid: false, warning: '合约代码不能为空', level: 'error' };
   const code = contractCode.trim().toUpperCase();
-  // 主力连续合约（如 P0, RB0, CU0）总是有效
-  if (/^[A-Z]+0$/.test(code)) return { valid: true, warning: null };
-  // 具体月份合约格式：字母+4位数字（如 RB2509, P2601）
-  const m = code.match(/^([A-Z]+)(\d{4})$/);
-  if (!m) return { valid: false, warning: '合约格式不正确，应为字母+4位数字（如 RB2509）或主力连续（如 RB0）' };
-  const prefix = m[1];
-  const ym = m[2];
+  // 主力连续合约（如 P0, RB0, CU0）— 数据源虚拟代码，允许但提示
+  if (/^[A-Z]+0$/.test(code)) return { valid: true, warning: '⚠ ' + code + ' 是主力连续（虚拟代码），建议使用真实月份合约如 ' + code.replace('0','2609'), level: 'warn' };
+  // CZCE 3位数字格式（如 SR509 = 2025年9月）
+  const m3 = code.match(/^([A-Z]+)(\d)(\d{2})$/);
+  // 4位数字格式（如 RB2609）
+  const m4 = code.match(/^([A-Z]+)(\d{4})$/);
+  let prefix, yearPart, monthPart;
+  if (m4) { prefix = m4[1]; yearPart = m4[2].substring(0,2); monthPart = m4[2].substring(2,4); }
+  else if (m3) { prefix = m3[1]; yearPart = m3[2]; monthPart = m3[3]; }
+  else return { valid: false, warning: '合约格式不正确，应为字母+月份（如 RB2609）或主力连续（如 RB0）', level: 'error' };
   // 检查品种前缀是否匹配
   const meta = findVarietyMeta(varietySymbol);
   if (meta && prefix !== meta.code.toUpperCase()) {
-    return { valid: false, warning: '合约前缀 ' + prefix + ' 与品种 ' + varietySymbol + ' 不匹配（应为 ' + meta.code.toUpperCase() + '）' };
+    return { valid: false, warning: '合约前缀 ' + prefix + ' 与品种 ' + varietySymbol + ' 不匹配（应为 ' + meta.code.toUpperCase() + '）', level: 'error' };
   }
-  // 检查是否过期：合约月份 = YYMM，如 2509 = 2025年9月
-  const yy = parseInt(ym.substring(0, 2));
-  const mm = parseInt(ym.substring(2, 4));
-  if (mm < 1 || mm > 12) return { valid: false, warning: '合约月份不正确（应为01-12）' };
-  // 当前年份后两位
+  // 检查月份 01-12
+  const mm = parseInt(monthPart);
+  if (mm < 1 || mm > 12) return { valid: false, warning: '合约月份不正确（应为01-12）', level: 'error' };
+  // 检查是否过期
   const now = new Date();
-  const curYY = now.getFullYear() % 100;
+  const curYear = now.getFullYear();
   const curMonth = now.getMonth() + 1;
-  // 合约年份在当前年份-2到+3范围内合理
-  let fullYY = yy;
-  if (yy < curYY - 2) fullYY += 100; // 如 97 → 1997
-  // 判断过期：合约月份已过（考虑交割月通常在当月15-20日左右最后交易日）
-  const contractYear = 2000 + yy;
-  if (contractYear < now.getFullYear() || (contractYear === now.getFullYear() && mm < curMonth)) {
-    return { valid: true, warning: '⚠ 合约 ' + code + ' 可能已过期（' + contractYear + '年' + mm + '月），建议使用主力连续或近月合约' };
+  const contractYear = 2000 + parseInt(yearPart);
+  // 合约月份已过 = 过期
+  if (contractYear < curYear || (contractYear === curYear && mm < curMonth)) {
+    return { valid: false, warning: '✗ 合约 ' + code + ' 已过期（' + contractYear + '年' + mm + '月），请换为当月或远月合约', level: 'error' };
   }
-  return { valid: true, warning: null };
+  // 交割月当月或下月 = 即将到期警告（期货交割一般在当月15日左右）
+  if (contractYear === curYear && mm === curMonth) {
+    return { valid: true, warning: '⚠ 合约 ' + code + ' 为当月合约，可能即将交割，注意换月', level: 'warn' };
+  }
+  if (contractYear === curYear && mm === curMonth + 1) {
+    return { valid: true, warning: '⚠ 合约 ' + code + ' 为下月合约，临近交割期', level: 'warn' };
+  }
+  return { valid: true, warning: null, level: 'ok' };
 }
 
-// 预置观察池：用户指定的 8 个品种（合约默认为主力连续）
+// 预置观察池：8 个品种，合约为当前主力月份（2026-07，动态维护）
 const DEFAULT_COMMODITIES = [
-  {symbol:'棕榈油',contractCode:'P0',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'DCE'},
-  {symbol:'白糖',contractCode:'SR0',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE'},
-  {symbol:'棉花',contractCode:'CF0',multiplier:5,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE'},
-  {symbol:'天然橡胶',contractCode:'RU0',multiplier:10,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'能源化工',exchange:'SHFE'},
-  {symbol:'铜',contractCode:'CU0',multiplier:5,marginRate:0.09,price:0,percentile:0,costLine:0,status:'bottom',category:'有色金属',exchange:'SHFE'},
-  {symbol:'黄金',contractCode:'AU0',multiplier:1000,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE'},
-  {symbol:'白银',contractCode:'AG0',multiplier:15,marginRate:0.10,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE'},
-  {symbol:'多晶硅',contractCode:'PS0',multiplier:3,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX'}
+  {symbol:'棕榈油',contractCode:'P2609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'DCE'},
+  {symbol:'白糖',contractCode:'SR509',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE'},
+  {symbol:'棉花',contractCode:'CF509',multiplier:5,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE'},
+  {symbol:'天然橡胶',contractCode:'RU2609',multiplier:10,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'能源化工',exchange:'SHFE'},
+  {symbol:'铜',contractCode:'CU2609',multiplier:5,marginRate:0.09,price:0,percentile:0,costLine:0,status:'bottom',category:'有色金属',exchange:'SHFE'},
+  {symbol:'黄金',contractCode:'AU2608',multiplier:1000,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE'},
+  {symbol:'白银',contractCode:'AG2608',multiplier:15,marginRate:0.10,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE'},
+  {symbol:'多晶硅',contractCode:'PS2509',multiplier:3,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX'}
 ];
 
 const FUND_DIMENSIONS = [
@@ -149,11 +155,11 @@ function loadState() {
     if (s) {
       const saved = JSON.parse(s);
       state = {...state, ...saved};
-      // 版本迁移：旧版本（无 category 字段或品种数不匹配）重置为最新预置池
+      // 版本迁移：旧版本（XX0虚拟合约或品种数不匹配）重置为最新真实主力合约
       if (!state.version || state.version !== APP_VERSION) {
         console.log('[FT] 版本迁移:', state.version, '→', APP_VERSION);
-        // 保留用户自定义的品种（有 category 的），但重置预置品种
-        const userCustom = (state.pool || []).filter(c => c.category && !DEFAULT_COMMODITIES.find(d => d.symbol === c.symbol));
+        // 保留用户自定义品种（非预置品种），重置预置品种为最新合约
+        const userCustom = (state.pool || []).filter(c => !DEFAULT_COMMODITIES.find(d => d.symbol === c.symbol));
         state.pool = [...JSON.parse(JSON.stringify(DEFAULT_COMMODITIES)), ...userCustom];
         state.version = APP_VERSION;
         saveState();
@@ -164,7 +170,6 @@ function loadState() {
       state.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
     }
   } catch(e) {
-    console.warn('[FT] loadState 失败，使用默认数据:', e);
     state.pool = JSON.parse(JSON.stringify(DEFAULT_COMMODITIES));
     state.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
   }
@@ -268,7 +273,28 @@ function checkAutoBackup() {
 }
 
 // ============ AUTO FETCH PRICES ============
-// East Money HTTPS single-stock API (primary)
+// === futsseapi EastMoney 期货列表 API（CORS 直连，主力数据源）===
+// 支持 CORS（Access-Control-Allow-Origin: *），浏览器可直接 fetch
+// 市场码: 113=SHFE, 114=DCE；CZCE/GFEX 不支持此 API
+const FUTSSE_MARKET_MAP = { 'SHFE': 113, 'DCE': 114 };
+
+// 将合约代码转换为 futsseapi 的 dm 格式
+// 主力连续(XX0) → code.toLowerCase()+'m'；具体月份 → code.toLowerCase()+月份
+function contractToFutsseDm(contractCode, varietyMeta) {
+  if (!contractCode || !varietyMeta) return null;
+  const code = varietyMeta.code.toLowerCase();
+  const cc = contractCode.trim().toUpperCase();
+  if (/^[A-Z]+0$/.test(cc)) return code + 'm'; // 主力连续
+  // 4位数字格式 (RB2609 → rb2609)
+  const m4 = cc.match(/^[A-Z]+(\d{4})$/);
+  if (m4) return code + m4[1];
+  // CZCE 3位数字格式 (SR509 → sr509)
+  const m3 = cc.match(/^[A-Z]+(\d{3})$/);
+  if (m3) return code + m3[1];
+  return null;
+}
+
+// East Money HTTPS single-stock API (备用)
 // secid 格式: {市场码}{品种代码小写}m，市场码: 113=SHFE, 114=DCE, 115=CZCE, 8=GFEX
 const EASTMONEY_SYMBOL_MAP = {
   // SHFE
@@ -285,30 +311,7 @@ const EASTMONEY_SYMBOL_MAP = {
   '多晶硅':'8.psm', '工业硅':'8.sim', '碳酸锂':'8.lcm'
 };
 
-// === futsseapi EastMoney 期货列表 API（支持 CORS，主力数据源）===
-// 市场码: 113=SHFE(上海期货), 114=DCE(大连商品)
-// CZCE/GFEX 不支持此 API，需走 push2 JSONP 备用
-const FUTSSE_MARKET_MAP = {
-  'SHFE': 113,
-  'DCE': 114
-};
-
-// 将品种的 contractCode 转换为 futsseapi 的 dm 格式
-// 主力连续 (XX0) → code.toLowerCase() + 'm'  (如 CU0 → cum)
-// 具体月份 (XX2509) → code.toLowerCase() + '2509' (如 RB2509 → rb2509)
-function contractToFutsseDm(contractCode, varietyMeta) {
-  if (!contractCode || !varietyMeta) return null;
-  const code = varietyMeta.code.toLowerCase();
-  const cc = contractCode.trim().toUpperCase();
-  // 主力连续
-  if (/^[A-Z]+0$/.test(cc)) return code + 'm';
-  // 具体月份合约
-  const m = cc.match(/^[A-Z]+(\d{3,4})$/);
-  if (m) return code + m[1];
-  return null;
-}
-
-// Sina Finance continuous contract mapping (backup)
+// Sina Finance continuous contract mapping (备用 — 浏览器需 CORS 代理)
 const SINA_SYMBOL_MAP = {
   // SHFE
   '螺纹钢':'RB0', '热卷':'HC0', '铁矿石':'I0', '天然橡胶':'RU0',
@@ -343,7 +346,7 @@ function setLastUpdateTime(ts) {
 function fetchPriceFromEastMoney(secid) {
   return new Promise((resolve) => {
     const cbName = '_em_cb_' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-    const timeout = setTimeout(() => { cleanup(); resolve(null); }, 4000);
+    const timeout = setTimeout(() => { cleanup(); resolve(null); }, 7000);
 
     function cleanup() {
       clearTimeout(timeout);
@@ -371,78 +374,25 @@ function fetchPriceFromEastMoney(secid) {
   });
 }
 
-// === Sina Finance batch query via fetch + CORS proxy ===
-// 新浪 hq.sinajs.cn 防盗链：GitHub Pages 的 Referer 会被 Forbidden
-// 改用 fetch + CORS 代理（allorigins.win）绕过 Referer 限制
-async function fetchPricesFromSina(symbols, symbolToPool) {
-  if (!symbols.length) return {ok:0, fail:0, total:0};
-  const codes = symbols.map(s => 'nf_' + s.toUpperCase());
-  const sinaUrl = 'https://hq.sinajs.cn/rn=' + Date.now() + '&list=' + codes.join(',');
-  // 尝试多个 CORS 代理
-  const proxies = [
-    function(url) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url); },
-    function(url) { return 'https://corsproxy.io/?url=' + encodeURIComponent(url); },
-    function(url) { return 'https://thingproxy.freeboard.io/fetch/' + url; }
-  ];
-
-  for (let i = 0; i < proxies.length; i++) {
-    try {
-      const proxyUrl = proxies[i](sinaUrl);
-      const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(6000) });
-      if (!resp.ok) { console.log('[FT] 新浪代理' + i + ' HTTP ' + resp.status); continue; }
-      const text = await resp.text();
-      if (!text || text.indexOf('Forbidden') >= 0 || text.indexOf('hq_str_') < 0) {
-        console.log('[FT] 新浪代理' + i + ' 返回无效内容');
-        continue;
-      }
-      // 解析返回的 var hq_str_nf_XXX="..." 行
-      let okCount = 0;
-      const lines = text.split('\n');
-      lines.forEach(line => {
-        const m = line.match(/var\s+hq_str_(\w+)\s*=\s*"([^"]*)"/);
-        if (!m) return;
-        const code = m[1];
-        const raw = m[2];
-        if (!raw) return;
-        const parts = raw.split(',');
-        // Sina futures format: [8]=latest, [7]=ask, [6]=bid, [3]=high, [4]=low, [2]=open, [5]=prev close
-        const tries = [8,7,6,3,4,2,5];
-        for (let j = 0; j < tries.length; j++) {
-          const p = parseFloat(parts[tries[j]]);
-          if (!isNaN(p) && p > 0) {
-            const origSymbol = code.replace('nf_', '').toUpperCase();
-            const c = symbolToPool[origSymbol] || symbolToPool[symbols.find(s => s.toUpperCase() === origSymbol)];
-            if (c) { c.price = p; fetchStatusMap[c.symbol] = 'ok'; okCount++; }
-            break;
-          }
-        }
-      });
-      console.log('[FT] 新浪代理' + i + ' 成功 ' + okCount + '/' + symbols.length);
-      if (okCount > 0) return {ok:okCount, fail:symbols.length - okCount, total:symbols.length};
-    } catch(e) {
-      console.log('[FT] 新浪代理' + i + ' 失败:', e.message);
-    }
-  }
-  // 所有代理都失败，尝试直接 script 标签方式（可能在非 GitHub Pages 环境工作）
-  return fetchPricesFromSinaScript(symbols, symbolToPool);
-}
-
-// Sina script-tag 方式（备用，GitHub Pages 会被 Forbidden，但本地开发环境可能工作）
-function fetchPricesFromSinaScript(symbols, symbolToPool) {
+// === Sina Finance script-tag batch query ===
+function fetchPricesFromSina(symbols, symbolToPool) {
   return new Promise((resolve) => {
     if (!symbols.length) { resolve({ok:0,fail:0,total:0}); return; }
     const codes = symbols.map(s => 'nf_' + s.toUpperCase());
-    const timeout = setTimeout(() => { cleanup(); resolve({ok:0,fail:symbols.length,total:symbols.length}); }, 6000);
+    const cbName = '_sina_cb_' + Date.now();
+    const timeout = setTimeout(() => { cleanup(); resolve({ok:0,fail:symbols.length,total:symbols.length}); }, 10000);
 
     function cleanup() {
       clearTimeout(timeout);
+      delete window[cbName];
       const s = document.getElementById('sinaScript');
       if (s) s.remove();
     }
 
+    window[cbName] = function() {}; // placeholder
     const script = document.createElement('script');
     script.id = 'sinaScript';
-    script.src = 'https://hq.sinajs.cn/rn=' + Date.now() + '&list=' + codes.join(',');
+    script.src = `https://hq.sinajs.cn/rn=${Date.now()}&list=${codes.join(',')}`;
     script.onload = () => {
       cleanup();
       let okCount = 0;
@@ -451,6 +401,7 @@ function fetchPricesFromSinaScript(symbols, symbolToPool) {
           const raw = window['hq_str_' + code];
           if (raw) {
             const parts = raw.split(',');
+            // Sina futures format: [8]=latest, [7]=ask, [6]=bid, [3]=high, [4]=low, [2]=open, [5]=prev close
             const tries = [8,7,6,3,4,2,5];
             for (let j = 0; j < tries.length; j++) {
               const p = parseFloat(parts[tries[j]]);
@@ -470,69 +421,23 @@ function fetchPricesFromSinaScript(symbols, symbolToPool) {
   });
 }
 
-// === Tencent Finance batch query (JSONP via script tag) ===
-// 腾讯财经 qt.gtimg.cn 通常不检查 Referer，作为第三备用
-function fetchPricesFromTencent(symbols, symbolToPool, tencentMap) {
-  return new Promise((resolve) => {
-    if (!symbols.length) { resolve({ok:0,fail:0,total:0}); return; }
-    const codes = symbols.map(s => tencentMap[s] || s.toLowerCase());
-    const timeout = setTimeout(() => { cleanup(); resolve({ok:0,fail:symbols.length,total:symbols.length}); }, 6000);
-
-    function cleanup() {
-      clearTimeout(timeout);
-      const s = document.getElementById('tencentScript');
-      if (s) s.remove();
-    }
-
-    const script = document.createElement('script');
-    script.id = 'tencentScript';
-    script.src = 'https://qt.gtimg.cn/q=' + codes.join(',');
-    script.onload = () => {
-      cleanup();
-      let okCount = 0;
-      codes.forEach((code, idx) => {
-        try {
-          const raw = window['v_' + code];
-          if (raw) {
-            const parts = raw.split('~');
-            // 腾讯格式: [1]=最新价
-            const p = parseFloat(parts[1]);
-            if (!isNaN(p) && p > 0) {
-              const c = symbolToPool[symbols[idx]];
-              if (c) { c.price = p; fetchStatusMap[c.symbol] = 'ok'; okCount++; }
-            }
-          }
-        } catch(e) {}
-      });
-      resolve({ok:okCount, fail:symbols.length - okCount, total:symbols.length});
-    };
-    script.onerror = () => { cleanup(); resolve({ok:0, fail:symbols.length, total:symbols.length}); };
-    document.head.appendChild(script);
-  });
-}
-
-// === futsseapi 批量获取（支持 CORS，主力数据源）===
-// 一次请求获取整个市场的合约列表，本地匹配品种
+// === futsseapi 批量获取（CORS 直连，主力数据源）===
 async function fetchPricesFromFutsseApi(poolItems) {
   if (!poolItems || !poolItems.length) return {ok:0, fail:0, total:0};
-  // 按市场分组
   const byMarket = {}; // marketCode → [{item, dm}]
   poolItems.forEach(c => {
     const meta = findVarietyMeta(c.symbol);
     if (!meta || !meta.exchange) return;
-    const marketCode = FUTSSE_MARKET_MAP[meta.exchange];
-    if (!marketCode) return; // CZCE/GFEX 不支持
+    const mc = FUTSSE_MARKET_MAP[meta.exchange];
+    if (!mc) return; // CZCE/GFEX 不支持
     const dm = contractToFutsseDm(c.contractCode, meta);
     if (!dm) return;
-    if (!byMarket[marketCode]) byMarket[marketCode] = [];
-    byMarket[marketCode].push({item: c, dm: dm});
+    if (!byMarket[mc]) byMarket[mc] = [];
+    byMarket[mc].push({item: c, dm: dm});
   });
-
   let okCount = 0;
   const markets = Object.keys(byMarket);
   if (!markets.length) return {ok:0, fail:poolItems.length, total:poolItems.length};
-
-  // 并行请求各市场
   const promises = markets.map(async (mc) => {
     try {
       const url = 'https://futsseapi.eastmoney.com/list/' + mc +
@@ -541,57 +446,43 @@ async function fetchPricesFromFutsseApi(poolItems) {
       if (!resp.ok) { console.log('[FT] futsseapi 市场', mc, 'HTTP', resp.status); return; }
       const data = await resp.json();
       if (!data || !data.list) return;
-      // 构建 dm → price 映射
       const priceMap = {};
-      data.list.forEach(x => { if (x.dm && x.p) priceMap[x.dm] = x.p; });
-      // 匹配品种
+      data.list.forEach(x => { if (x.dm && x.p && x.p !== '-' && x.p > 0) priceMap[x.dm] = x.p; });
       byMarket[mc].forEach(entry => {
         const p = priceMap[entry.dm];
-        if (p && p > 0) {
-          entry.item.price = p;
-          fetchStatusMap[entry.item.symbol] = 'ok';
-          okCount++;
-        }
+        if (p && p > 0) { entry.item.price = p; fetchStatusMap[entry.item.symbol] = 'ok'; okCount++; }
       });
-    } catch(e) {
-      console.log('[FT] futsseapi 市场', mc, '失败:', e.message);
-    }
+    } catch(e) { console.log('[FT] futsseapi 市场', mc, '失败:', e.message); }
   });
   await Promise.all(promises);
   console.log('[FT] futsseapi 完成: 成功', okCount, '/', poolItems.length);
   return {ok:okCount, fail:poolItems.length - okCount, total:poolItems.length};
 }
 
-// === Combined fetch: futsseapi(CORS) -> East Money JSONP -> Sina(CORS proxy) -> Tencent -> Manual ===
+// === Combined fetch: futsseapi(CORS) → EastMoney JSONP → Sina → Manual ===
 async function fetchPricesNow() {
   const t0 = Date.now();
-
-  // 空池早返回：不发起任何网络请求
   if (!state.pool || state.pool.length === 0) {
     setDataSourceStatus('offline', '数据源: 手动模式 · 观察池为空');
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN'));
     showToast('观察池为空，请先添加品种');
     return {ok:0, fail:0, total:0};
   }
-
-  console.log('[FT] 开始刷新行情, 池中品种:', state.pool.map(c => c.symbol).join(', '));
+  console.log('[FT] 开始刷新行情, 池中品种:', state.pool.map(c => c.symbol + '/' + c.contractCode).join(', '));
   setDataSourceStatus('loading', '数据源: 正在获取行情...');
-
-  // Reset status
   fetchStatusMap = {};
   state.pool.forEach(c => { fetchStatusMap[c.symbol] = 'manual'; });
 
-  // Step 0: futsseapi（CORS 直连，主力数据源）- SHFE/DCE 市场
-  setDataSourceStatus('loading', '数据源: 正在获取行情...');
+  // Step 0: futsseapi（CORS 直连）— SHFE/DCE 品种
   const futsseResult = await fetchPricesFromFutsseApi(state.pool);
   let futsseOk = futsseResult.ok;
-  console.log('[FT] futsseapi 完成: 成功', futsseOk);
+  console.log('[FT] futsseapi: 成功', futsseOk);
 
-  // Step 1: East Money JSONP (secondary) - 仅处理 futsseapi 未成功的品种
+  // Step 1: EastMoney JSONP — CZCE/GFEX 及 futsseapi 未覆盖品种
   let emOk = 0, emFail = [];
   const emPending = [];
   state.pool.forEach(c => {
-    if (fetchStatusMap[c.symbol] === 'ok') return; // futsseapi 已成功，跳过
+    if (fetchStatusMap[c.symbol] === 'ok') return; // futsseapi 已成功
     const secid = EASTMONEY_SYMBOL_MAP[c.symbol];
     if (secid) {
       emPending.push((async () => {
@@ -599,67 +490,51 @@ async function fetchPricesNow() {
         if (p) { c.price = p; fetchStatusMap[c.symbol] = 'ok'; emOk++; }
         else { emFail.push(c.symbol); }
       })());
-    } else {
-      emFail.push(c.symbol);
-    }
+    } else { emFail.push(c.symbol); }
   });
   await Promise.all(emPending);
-  console.log('[FT] 东财JSONP完成: 成功', emOk, '失败', emFail.length);
+  console.log('[FT] 东财JSONP: 成功', emOk, '失败', emFail.length);
 
-  // Step 2: Sina (backup for failed items) - 通过 CORS 代理
+  // Step 2: Sina — 最后备用（浏览器需 CORS 代理，可能失败）
   let sinaOk = 0;
   if (emFail.length) {
-    setDataSourceStatus('loading', '数据源: futsseapi ' + futsseOk + '个, 东财 ' + emOk + '个, 尝试新浪备用...');
-    const sinaSymbols = [];
-    const symbolToPool = {};
+    setDataSourceStatus('loading', '数据源: 尝试新浪备用...');
+    const sinaSymbols = [], symbolToPool = {};
     emFail.forEach(sym => {
-      const sinaSym = SINA_SYMBOL_MAP[sym];
-      if (sinaSym) { sinaSymbols.push(sinaSym); symbolToPool[sinaSym] = state.pool.find(x => x.symbol === sym); }
+      const s = SINA_SYMBOL_MAP[sym];
+      if (s) { sinaSymbols.push(s); symbolToPool[s] = state.pool.find(x => x.symbol === sym); }
     });
     if (sinaSymbols.length) {
       const sina = await fetchPricesFromSina(sinaSymbols, symbolToPool);
       sinaOk = sina.ok;
     }
   }
-  console.log('[FT] 新浪完成: 成功', sinaOk);
+  console.log('[FT] 新浪: 成功', sinaOk);
 
-  // Step 3: Tencent (third backup for still-failed items)
-  let tencentOk = 0;
-  const stillFailed = state.pool.filter(c => fetchStatusMap[c.symbol] !== 'ok' && fetchStatusMap[c.symbol] !== 'manual-ok');
-  if (stillFailed.length) {
-    setDataSourceStatus('loading', '数据源: 尝试腾讯备用...');
-    const tencentMap = {}; // 品种名 → 腾讯代码（小写）
-    state.pool.forEach(c => {
-      const meta = EXCHANGE_VARIETIES.find(v => v.symbol === c.symbol);
-      if (meta) tencentMap[c.symbol] = meta.code.toLowerCase() + '0';
-    });
-    const tencentSymbols = stillFailed.map(c => c.symbol);
-    const symbolToPool = {};
-    stillFailed.forEach(c => { symbolToPool[c.symbol] = c; });
-    const tc = await fetchPricesFromTencent(tencentSymbols, symbolToPool, tencentMap);
-    tencentOk = tc.ok;
-  }
-  console.log('[FT] 腾讯完成: 成功', tencentOk);
-
-  const totalOk = futsseOk + emOk + sinaOk + tencentOk;
+  const totalOk = futsseOk + emOk + sinaOk;
   const elapsed = Date.now() - t0;
   const poolLen = state.pool.length;
+  const stillManual = poolLen - totalOk;
 
   if (totalOk > 0) {
     saveState();
     if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool();
     onPriceUpdate();
-    const src = futsseOk > 0 ? '东财futsseapi' : (emOk > 0 ? '东财JSONP' : (sinaOk > 0 ? '新浪' : '腾讯'));
-    setDataSourceStatus('online', '数据源: ' + src + ' (' + totalOk + '/' + poolLen + ' 成功) · ' + elapsed + 'ms');
+    let src;
+    if (futsseOk > 0) src = '东财futsseapi';
+    else if (emOk > 0) src = '东财JSONP';
+    else src = '新浪';
+    const msg = '数据源: ' + src + ' (' + totalOk + '/' + poolLen + ' 成功)' +
+                (stillManual > 0 ? ' · ' + stillManual + '个需手动' : '') + ' · ' + elapsed + 'ms';
+    setDataSourceStatus('online', msg);
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN'));
-    showToast('已更新 ' + totalOk + ' 个品种价格');
+    showToast('已更新 ' + totalOk + ' 个品种价格' + (stillManual > 0 ? '，' + stillManual + '个需手动输入' : ''));
   } else {
-    setDataSourceStatus('offline', '数据源: 获取失败 · 已回退手动模式');
+    setDataSourceStatus('offline', '数据源: 获取失败 · 手动模式');
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN') + ' (失败)');
-    showToast('行情获取失败，请检查网络或手动输入价格');
-    console.warn('[FT] 所有数据源均失败。东财secid格式可能需要更新，或网络受限。');
+    showToast('行情自动获取失败，请手动输入价格（CZCE/GFEX品种需手动）');
+    console.warn('[FT] 所有自动数据源均失败。SHFE/DCE应可用futsseapi，CZCE/GFEX需手动。');
   }
-
   return {ok:totalOk, fail:poolLen - totalOk, total:poolLen};
 }
 
@@ -852,7 +727,7 @@ function isSweetSignal(symbol) {
 function loadSettings() {
   const s = state.settings;
   const el = (id) => document.getElementById(id);
-  // 非设置页面不存在这些表单元素，必须判空，否则抛出 TypeError 导致后续 DOMContentLoaded 代码中断
+  // 非设置页面不存在这些表单元素，必须判空，否则抛 TypeError 中断后续初始化
   const setVal = (id, val) => { const e = el(id); if (e) e.value = val; };
   setVal('setInitEquity', s.initEquity);
   setVal('setTarget', s.target);
