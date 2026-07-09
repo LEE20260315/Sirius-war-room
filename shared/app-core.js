@@ -154,7 +154,10 @@ function loadState() {
     const s = localStorage.getItem('futures_tracker_state');
     if (s) {
       const saved = JSON.parse(s);
-      state = {...state, ...saved};
+      // 必须用 Object.assign 修改原 state 对象，不能用 state = {...} 重新赋值
+      // 因为 window.FTApp.state 在导出时已绑定原对象引用，重新赋值会导致 FTApp.state 指向旧空对象
+      // （这是跨页面 signal/trade 等页面读不到 pool 的根因）
+      Object.assign(state, saved);
       // 版本迁移：旧版本（XX0虚拟合约或品种数不匹配）重置为最新真实主力合约
       if (!state.version || state.version !== APP_VERSION) {
         console.log('[FT] 版本迁移:', state.version, '→', APP_VERSION);
