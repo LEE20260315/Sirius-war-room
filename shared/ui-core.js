@@ -103,8 +103,9 @@
         if (!items.length) return;
         opts += '<optgroup label="' + exchangeNameMap[ex] + '">';
         items.forEach(function (v) {
+          // 第一步只选品种，合约在下方输入框单独选择（选择品种后自动回填主力合约）
           opts += '<option value="' + FTApp.escapeHtml(v.symbol) + '" data-contract="' + FTApp.escapeHtml(v.defaultContract) + '">' +
-            FTApp.escapeHtml(v.symbol) + '（' + v.category + ' · 主力 ' + v.defaultContract + '）</option>';
+            FTApp.escapeHtml(v.symbol) + '（' + v.category + '）</option>';
         });
         opts += '</optgroup>';
       });
