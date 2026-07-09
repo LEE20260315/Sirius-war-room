@@ -27,6 +27,7 @@
   var CELL_INPUT = 'bg-surface-base border border-edge-faint rounded px-2 py-1 text-xs text-ink font-mono';
 
   // 追加 / 刷新合约 datalist（renderPool 每次渲染后调用一次）
+  // 动态生成当前及未来远月候选，避免出现过期合约
   function ensureContractList() {
     var dl = el('contractList');
     if (!dl) {
@@ -34,11 +35,32 @@
       dl.id = 'contractList';
       document.body.appendChild(dl);
     }
+    var now = new Date();
+    var curY = now.getFullYear();
+    var curM = now.getMonth() + 1;
     var opts = '';
     FTApp.EXCHANGE_VARIETIES.forEach(function (v) {
+      // 主力合约（EXCHANGE_VARIETIES 配置的真实月份）
       opts += '<option value="' + FTApp.escapeHtml(v.defaultContract) + '">' + FTApp.escapeHtml(v.symbol) + ' 主力</option>';
-      opts += '<option value="' + FTApp.escapeHtml(v.code + '2509') + '">' + FTApp.escapeHtml(v.symbol) + ' 2509</option>';
-      opts += '<option value="' + FTApp.escapeHtml(v.code + '2601') + '">' + FTApp.escapeHtml(v.symbol) + ' 2601</option>';
+      // 动态生成未来 6 个常见交割月候选（1/5/9 月为主，CZCE 用3位格式，其他用4位）
+      var isCZCE = v.exchange === 'CZCE';
+      var months = [9, 10, 11, 12, 1, 3, 5];
+      var y = curY, m = curM;
+      var count = 0;
+      for (var i = 0; i < 24 && count < 5; i++) {
+        m++;
+        if (m > 12) { m = 1; y++; }
+        if ([1,5,9,10].indexOf(m) >= 0) {
+          var yPart4 = String(y).slice(2);          // 4位格式 '26'
+          var yPart3 = String(y).slice(3);           // CZCE 3位格式 '6'
+          var mPart = (m < 10 ? '0' : '') + m;
+          var cc = isCZCE ? (v.code + yPart3 + mPart) : (v.code + yPart4 + mPart);
+          if (cc !== v.defaultContract) {
+            opts += '<option value="' + FTApp.escapeHtml(cc) + '">' + FTApp.escapeHtml(v.symbol) + ' ' + (isCZCE ? yPart3 + mPart : yPart4 + mPart) + '</option>';
+          }
+          count++;
+        }
+      }
     });
     dl.innerHTML = opts;
   }
@@ -291,15 +313,34 @@
         ['fundTechnical', 'fundTechnicalNote', 'technical']
       ];
       var fund = sym ? (FTApp.state.fundamentals[sym] || {}) : {};
+      // 判断该品种是否有外部日报数据
+      var feed = window.__fundFeed;
+      var hasExternal = false;
+      var extScore = null;
+      if (feed && feed.records && feed.records.length) {
+        var feishuName = (FTApp.PROJECT_TO_FEISHU_MAP && FTApp.PROJECT_TO_FEISHU_MAP[sym]) || sym;
+        var v = feed.records[0].varieties && feed.records[0].varieties[feishuName];
+        if (v && v.score != null) { hasExternal = true; extScore = v.score; }
+      }
       dims.forEach(function (d) {
         var sInp = el(d[0]), nInp = el(d[1]);
         if (!sInp) return;
         var data = fund[d[2]] || {};
-        var score = (data.score != null) ? data.score : 5;
+        // 未评分时默认0分（不再默认5分），强制用户主动评分
+        var score = (data.score != null) ? data.score : 0;
         sInp.value = score;
         if (sInp.nextElementSibling) sInp.nextElementSibling.textContent = score;
         if (nInp) nInp.value = data.note || '';
       });
+      // 有外部数据时显示提示，引导用户参考
+      var hint = el('fundHint');
+      if (hint) {
+        if (hasExternal) {
+          hint.innerHTML = '<span style="color:#8ca06f">📊 外部日报：' + FTApp.escapeHtml(sym) + ' 综合分 ' + extScore.toFixed(1) + '（可参考填充下方维度，0分=未评分需手动填写）</span>';
+        } else {
+          hint.innerHTML = '<span style="color:#e08d6f">⚠ ' + FTApp.escapeHtml(sym) + ' 无外部日报数据，请手动填写各维度评分（0分=未评分）</span>';
+        }
+      }
       this.updateFundTotal();
       this.renderExternalFundSignal();
     },
