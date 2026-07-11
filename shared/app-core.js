@@ -3,7 +3,7 @@
 // auto-refresh, theme toggle, backup/import/export, and init function.
 
 // ============ VERSION ============
-const APP_VERSION = '2026.07.09-v8';
+const APP_VERSION = '2026.07.11-v9';
 
 // ============ DATA STORE ============
 // 交易所分类品种主数据：覆盖国内五大期货交易所
@@ -143,7 +143,7 @@ const FUND_DIMENSIONS = [
 
 let state = {
   version: APP_VERSION,
-  settings: {initEquity:15000,target:1000000,maxRisk:2,maxRiskSweet:8,drawdownWarn:20,commission:1,slippage:1,dataSource:'manual',apiUrl:''},
+  settings: {initEquity:15000,target:1000000,maxRisk:2,maxRiskSweet:8,drawdownWarn:20,commission:1,slippage:1,dataSource:'auto',apiUrl:'',maxSinglePosition:0.3,maxTotalPosition:0.8},
   pool: [],
   fundamentals: {},
   trades: [],
@@ -170,6 +170,9 @@ function loadState() {
         // 保留用户自定义品种（非预置品种），重置预置品种为最新合约
         const userCustom = (state.pool || []).filter(c => !DEFAULT_COMMODITIES.find(d => d.symbol === c.symbol));
         state.pool = [...JSON.parse(JSON.stringify(DEFAULT_COMMODITIES)), ...userCustom];
+        // v9: 数据源默认升级为 auto（旧版默认 manual 导致行情不自动获取）
+        // 用户如需 manual 可在设置页切回
+        if (state.settings) state.settings.dataSource = 'auto';
         state.version = APP_VERSION;
         saveState();
       }
@@ -715,11 +718,22 @@ function handleVisibilityChange() {
 }
 
 function initAutoRefresh() {
-  const on = localStorage.getItem('futures_auto_refresh') === '1';
+  // 优先读 state.settings.dataSource（默认 auto），兼容旧版 localStorage 标记
+  const dsMode = state.settings.dataSource || 'auto';
+  const on = (dsMode === 'auto') || (localStorage.getItem('futures_auto_refresh') === '1');
   const interval = localStorage.getItem('futures_refresh_interval') || '60';
-  document.getElementById('autoRefreshToggle').checked = on;
-  document.getElementById('refreshInterval').value = interval;
-  if (on) { startAutoRefresh(); fetchPricesNow(); }
+  var toggle = document.getElementById('autoRefreshToggle');
+  if (toggle) toggle.checked = on;
+  var intervalEl = document.getElementById('refreshInterval');
+  if (intervalEl) intervalEl.value = interval;
+  if (on) {
+    startAutoRefresh();
+    fetchPricesNow().then(function(r) {
+      console.log('[FT] 初始行情刷新完成:', r.ok + '成功/' + r.fail + '失败/' + r.total + '总计');
+    });
+  } else {
+    setDataSourceStatus('offline', '数据源: 手动模式');
+  }
   document.addEventListener('visibilitychange', handleVisibilityChange);
 }
 
@@ -943,14 +957,57 @@ async function backfillPriceSnapshots() {
     console.log('[FT] 冷启动回补完成:', backfilled, '个品种');
     // 回补后刷新信号矩阵
     if (window.FTRender && window.FTRender.refreshSignals) window.FTRender.refreshSignals();
+  } else if (needBackfill.length > 0) {
+    console.warn('[FT] 冷启动回补全部失败:', needBackfill.join(', '));
+    showToast('⚠ 历史数据回补失败，动量因子暂不可用（' + needBackfill.length + '个品种）');
   }
 }
 
-// 东财日线 K 线 JSONP 拉取：返回 [{date, price}, ...]（price=收盘价）
+// 东财日线 K 线拉取：返回 [{date, price}, ...]（price=收盘价）
+// 优先 fetch + CORS，失败回退 JSONP（双保险）
 function fetchDailyKlineFromEastMoney(symbol) {
+  var secid = EASTMONEY_SYMBOL_MAP[symbol];
+  if (!secid) return Promise.resolve([]);
+  var baseUrl = 'https://push2his.eastmoney.com/api/qt/stock/kline/get?ut=bd1d9ddb04089700cf9c27f6f7426281&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=0&end=20500101&lmt=30&secid=' + secid;
+
+  // 解析东财 klines 格式: ["日期,开盘,收盘,最高,最低,成交量,成交额,振幅,涨跌幅,涨跌额,换手率", ...]
+  function parseKlines(data) {
+    if (!data || !data.data || !data.data.klines) return [];
+    var result = [];
+    data.data.klines.forEach(function (line) {
+      var parts = line.split(',');
+      if (parts.length >= 3) {
+        var date = parts[0];
+        var close = parseFloat(parts[2]);
+        if (date && !isNaN(close) && close > 0) {
+          result.push({ date: date, price: close });
+        }
+      }
+    });
+    return result;
+  }
+
+  // 方式1: fetch + CORS（东财 push2his 支持 CORS）
+  return fetch(baseUrl, { method: 'GET' })
+    .then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(function (data) {
+      var result = parseKlines(data);
+      console.log('[FT] K线fetch成功:', symbol, result.length, '条');
+      return result;
+    })
+    .catch(function (e) {
+      console.warn('[FT] K线fetch失败:', symbol, e.message, '→ 回退JSONP');
+      // 方式2: JSONP 回退
+      return fetchDailyKlineJSONP(baseUrl);
+    });
+}
+
+// JSONP 回退：用于 fetch CORS 失败时
+function fetchDailyKlineJSONP(baseUrl) {
   return new Promise(function (resolve) {
-    var secid = EASTMONEY_SYMBOL_MAP[symbol];
-    if (!secid) { resolve([]); return; }
     var cbName = '_em_kline_cb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     var timeout = setTimeout(function () { cleanup(); resolve([]); }, 8000);
     function cleanup() {
@@ -962,7 +1019,6 @@ function fetchDailyKlineFromEastMoney(symbol) {
     window[cbName] = function (data) {
       cleanup();
       if (!data || !data.data || !data.data.klines) { resolve([]); return; }
-      // 东财 klines 格式: ["日期,开盘,收盘,最高,最低,成交量,成交额,振幅,涨跌幅,涨跌额,换手率", ...]
       var result = [];
       data.data.klines.forEach(function (line) {
         var parts = line.split(',');
@@ -978,8 +1034,7 @@ function fetchDailyKlineFromEastMoney(symbol) {
     };
     var script = document.createElement('script');
     script.id = 'emKlineScript_' + cbName;
-    // klt=101 日线, fqt=0 不复权, lmt=30 取30条, end=20500101 取到最新
-    script.src = 'https://push2his.eastmoney.com/api/qt/stock/kline/get?ut=bd1d9ddb04089700cf9c27f6f7426281&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=0&end=20500101&lmt=30&secid=' + secid + '&cb=' + cbName;
+    script.src = baseUrl + '&cb=' + cbName;
     script.onerror = function () { cleanup(); resolve([]); };
     document.head.appendChild(script);
   });

@@ -523,18 +523,21 @@
           rate = '买入'; rateLight = 'green';
         } else if (hasPct && p <= 35 && momStatus !== 'down' && composite >= 60 && !factorMissing) {
           rate = '加仓'; rateLight = 'green';
-        } else if (hasPct && p <= 10 && momUnknown && extFundScore != null && extFundScore >= 40) {
-          // 动量未就绪强关注：估值极低(分位≤10%) + 基本面不差 → "关注"（强信号）
+        } else if (hasPct && p <= 10 && momUnknown) {
+          // 动量未就绪强关注：估值极低(分位≤10%) → "关注"
+          // 基本面≥40 为正常关注；基本面缺失为"仅估值触发"关注（避免极低位静默）
           rate = '关注'; rateLight = 'yellow';
         } else if (hasPct && p > 10 && p <= 20 && momUnknown && extFundScore != null && extFundScore >= 40) {
           // 动量未就绪弱关注：估值偏低(10%~20%) + 基本面不差 → "关注"（弱信号）
+          // 基本面缺失时不触发弱关注（避免弱信号泛滥）
           rate = '关注'; rateLight = 'yellow';
         } else {
           rate = '观望'; rateLight = 'yellow';
         }
         // 因子缺失强制降级为观望（不给出买入/加仓；"关注"是弱信号允许保留）
         if (factorMissing && rateLight === 'green') { rate = '观望'; rateLight = 'yellow'; }
-        if (rate === '买入' || rate === '加仓') buyCount++;
+        // 强信号统计：买入+加仓+关注，用于健康度预警
+        if (rate === '买入' || rate === '加仓' || rate === '关注') buyCount++;
 
         var rateCls = rateLight === 'green' ? 'text-success' : (rateLight === 'red' ? 'text-error' : 'text-ink-muted');
         // 待验证标签
@@ -553,7 +556,11 @@
         var fundStr = extFundScore != null ? ('基本面外部' + extFundScore.toFixed(0) + '分') : '基本面无外部数据';
         var extraStr = (hasPct && p <= 25 && momStatus === 'down') ? '，逆势不抄底' : '';
         if (rate === '关注') {
-          extraStr += (hasPct && p <= 10) ? '，动量待确认' : '，估值偏低，待动量确认';
+          if (extFundScore == null) {
+            extraStr += '，仅估值触发（基本面缺失）';
+          } else {
+            extraStr += (hasPct && p <= 10) ? '，动量待确认' : '，估值偏低，待动量确认';
+          }
         }
         var detail = valStr + ' · ' + momStr + ' · ' + fundStr + extraStr;
 
@@ -592,7 +599,7 @@
         var buyPct = pool.length ? Math.round(buyCount / pool.length * 100) : 0;
         if (buyPct > 60) {
           warnBox.innerHTML = '<div class="alert-box" style="background:rgba(239,68,68,0.1);border-color:#ef4444;color:#ef4444">' +
-            '⚠ 买入信号占比 ' + buyPct + '%，信号高度趋同，可能因子失效或存在系统性风险，请谨慎</div>';
+            '⚠ 强信号（买入/加仓/关注）占比 ' + buyPct + '%，信号高度趋同，警惕系统性风险或因子失效</div>';
         } else {
           warnBox.innerHTML = '';
         }
@@ -1093,6 +1100,50 @@
     var price = +((el('tradePrice') || {}).value);
     if (!price || isNaN(price)) price = c && c.price ? c.price : 0;
     var multiplier = meta.multiplier || (c ? c.multiplier : 10) || 10;
+    var marginRate = meta.marginRate || (c ? c.marginRate : 0.1) || 0.1;
+
+    // ---- 风控校验：单品种仓位 / 总仓位 ----
+    var settings = FTApp.state.settings || {};
+    var maxSingle = settings.maxSinglePosition || 0.3;
+    var maxTotal = settings.maxTotalPosition || 0.8;
+    var equity = FTApp.getCurrentEquity ? FTApp.getCurrentEquity() : (settings.initEquity || 15000);
+    if (equity <= 0) equity = settings.initEquity || 15000;
+    // 本单保证金
+    var thisMargin = price * multiplier * lots * marginRate;
+    // 该品种已有保证金
+    var symMargin = 0;
+    (FTApp.state.trades || []).forEach(function (t) {
+      if (t.symbol === sym) {
+        var tMeta = FTApp.findVarietyMeta(t.symbol) || {};
+        var tRate = tMeta.marginRate || 0.1;
+        symMargin += (t.price || 0) * (t.multiplier || 10) * (t.lots || 1) * tRate;
+      }
+    });
+    // 全部持仓总保证金
+    var totalMargin = 0;
+    (FTApp.state.trades || []).forEach(function (t) {
+      var tMeta = FTApp.findVarietyMeta(t.symbol) || {};
+      var tRate = tMeta.marginRate || 0.1;
+      totalMargin += (t.price || 0) * (t.multiplier || 10) * (t.lots || 1) * tRate;
+    });
+    var symPct = ((symMargin + thisMargin) / equity * 100);
+    var totalPct = ((totalMargin + thisMargin) / equity * 100);
+    var blocked = false;
+    var blockMsg = '';
+    if (symPct > maxSingle * 100) {
+      blocked = true;
+      blockMsg += '单品种仓位将达 ' + symPct.toFixed(1) + '%，超过 ' + (maxSingle * 100) + '% 上限\n';
+    }
+    if (totalPct > maxTotal * 100) {
+      blocked = true;
+      blockMsg += '总仓位将达 ' + totalPct.toFixed(1) + '%，超过 ' + (maxTotal * 100) + '% 上限\n';
+    }
+    if (blocked) {
+      FTApp.showToast('⚠ 风控拦截：仓位超限');
+      alert('⚠ 风控拦截\n\n' + blockMsg + '\n请减少手数后重试。');
+      return;  // 阻止开仓
+    }
+
     var trade = {
       symbol: sym, dir: dir, lots: lots, price: price, multiplier: multiplier,
       openTime: new Date().toISOString().slice(0, 10), openCommission: 0
