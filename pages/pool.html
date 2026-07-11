@@ -339,6 +339,15 @@ document.addEventListener('DOMContentLoaded', async function() {
   safe('initAutoRefresh', function(){ FTApp.initAutoRefresh(); });
   safe('initAutoBackup', function(){ FTApp.initAutoBackup(); });
   safe('updateBackupDisplay', function(){ FTApp.updateBackupDisplay(); });
+  // 首次打开提示：若手动模式且有品种，提示启用自动行情源
+  if (FTApp.state.settings.dataSource === 'manual' && FTApp.state.pool && FTApp.state.pool.length > 0) {
+    if (!sessionStorage.getItem('ft_pool_hint_shown')) {
+      setTimeout(function() {
+        FTApp.showToast('💡 建议在设置页启用自动行情源，价格自动刷新');
+        sessionStorage.setItem('ft_pool_hint_shown', '1');
+      }, 2000);
+    }
+  }
 });
 </script>
 

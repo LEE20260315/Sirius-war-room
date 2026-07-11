@@ -118,6 +118,9 @@
     return 0;
   }
 
+  // 信号通知：记录上次信号状态，检测从非买入变为买入
+  var lastSignalMap = {};
+
   var FTRender = {
     // ============ 1. 观察池渲染 ============
     renderPool: function () {
@@ -506,6 +509,17 @@
         var costStr = costDiff !== 0 ? (costDiff > 0 ? '成本上+' : '成本下') + Math.abs(costDiff).toFixed(0) : '无成本数据';
         var fundStr = fundLight === 'green' ? '甜点' : '一般';
         var extStr = extFundScore != null ? '外部' + extFundScore.toFixed(0) + '分' : '手动评分';
+        // 信号通知：检测从非买入变为买入
+        var isBuySignal = (valLight === 'green' && FTApp.isSweetSignal(c.symbol));
+        var prevSignal = lastSignalMap[c.symbol];
+        if (isBuySignal && prevSignal !== 'buy' && 'Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification('📈 ' + c.symbol + ' 触发做多信号', {
+              body: '估值' + (p > 0 ? p + '%' : '无数据') + ' · ' + costStr + ' · ' + (extFundScore != null ? '外部' + extFundScore.toFixed(0) + '分' : '手动评分')
+            });
+          } catch(e) {}
+        }
+        lastSignalMap[c.symbol] = isBuySignal ? 'buy' : 'other';
         var detail = '估值' + (p > 0 ? p + '%' : '无数据') + '，' + costStr + '，基本面' + fundStr + '，' + extStr;
         html += '<tr>' +
           '<td class="py-2 px-4 text-ink">' + FTApp.escapeHtml(c.symbol) + '</td>' +
@@ -635,13 +649,24 @@
         });
         sel.innerHTML = opts;
         if (FTApp.state.pool && FTApp.state.pool.length) sel.value = FTApp.state.pool[0].symbol;
+        // 品种切换时自动更新开仓价
+        sel.onchange = function() {
+          var sym = sel.value;
+          var c = FTApp.state.pool.find(function(x) { return x.symbol === sym; });
+          var priceInput = el('tradePrice');
+          if (priceInput && c && c.price && c.price > 0) {
+            priceInput.value = c.price;
+          } else if (priceInput) {
+            priceInput.value = '';
+          }
+        };
       }
       var dir = el('tradeDirection'); if (dir) dir.value = 'long';
       var lots = el('tradeLots'); if (lots) lots.value = 1;
       var price = el('tradePrice');
       if (price) {
         var first = FTApp.state.pool && FTApp.state.pool[0];
-        price.value = first && first.price ? first.price : '';
+        price.value = (first && first.price && first.price > 0) ? first.price : '';
       }
       ['tradeStopLoss', 'tradeTakeProfit'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
       var reason = el('tradeReason'); if (reason) reason.value = '';

@@ -225,6 +225,7 @@
     <span>间隔: <select id="refreshInterval" onchange="FTApp.updateRefreshInterval()" class="p-0.5 border border-edge rounded text-xs bg-surface text-ink"><option value="60" selected>1分钟</option><option value="300">5分钟</option><option value="1800">30分钟</option><option value="3600">1小时</option></select></span>
     <span id="dataSourceStatus"><span class="status-dot offline"></span>数据源: 手动模式</span>
     <span id="lastUpdateTime">最近更新: --</span>
+    <button id="notifyBtn" onclick="FTApp.requestNotificationPermission()" class="px-3 py-1 text-xs rounded border border-edge-subtle hover:bg-surface-hover transition-colors">开启信号通知</button>
   </div>
   <button class="bg-brand-500 text-brand-50 px-3 py-1 rounded-sm text-xs font-medium hover:bg-brand-600 transition-colors" onclick="FTApp.fetchPricesNow()">立即刷新</button>
 </div>
@@ -302,6 +303,11 @@ document.addEventListener('DOMContentLoaded', async function() {
   safe('initAutoBackup', function(){ FTApp.initAutoBackup(); });
   safe('updateBackupDisplay', function(){ FTApp.updateBackupDisplay(); });
   safe('refreshSignals', function(){ FTRender.refreshSignals(); });
+  // 检查通知权限状态
+  if ('Notification' in window && Notification.permission === 'granted') {
+    var btn = document.getElementById('notifyBtn');
+    if (btn) { btn.textContent = '已开启通知'; btn.disabled = true; }
+  }
 });
 </script>
 

@@ -311,16 +311,9 @@
         <label>数据源模式</label>
         <select id="setDataSource">
           <option value="manual">手动输入</option>
-          <option value="api">API 自动获取</option>
+          <option value="auto">自动获取（三路降级：东财→新浪→手动）</option>
         </select>
-      </div>
-      <div class="form-group">
-        <label>API 地址 (如使用API模式)</label>
-        <input type="text" id="setApiUrl" placeholder="https://api.example.com/prices">
-      </div>
-      <div class="form-group">
-        <label>API Key (如需要)</label>
-        <input type="text" id="setApiKey" placeholder="输入API Key">
+        <div class="form-help">自动模式依次尝试 futsseapi(CORS) → 东财JSONP → 新浪JSONP，失败回退手动</div>
       </div>
       <div class="form-group">
         <label>自动备份间隔 (分钟)</label>
@@ -328,6 +321,26 @@
         <div class="form-help">0 表示关闭自动备份</div>
       </div>
     </div>
+
+    <!-- GitHub Gist 云同步 -->
+    <div class="bg-surface rounded-lg border border-edge-subtle p-4">
+      <h3 class="font-serif text-sm text-brand-500 mb-4 pb-2 border-b border-edge-faint">GitHub Gist 云同步</h3>
+      <div class="form-group">
+        <label>GitHub Token (仅需 gist 权限)</label>
+        <input type="password" id="setGithubToken" placeholder="ghp_xxxx 或 github_pat_xxxx">
+        <div class="form-help">Token 存于 sessionStorage，关闭标签即清除，不进入 localStorage。前往 GitHub → Settings → Developer Settings → Personal Access Tokens 生成</div>
+      </div>
+      <div class="form-group">
+        <label>Gist 同步状态</label>
+        <div id="gistIdDisplay" class="text-xs text-ink-muted">未同步</div>
+      </div>
+      <div class="flex gap-3 mt-3">
+        <button class="bg-brand-500 text-brand-50 px-4 py-2 rounded-sm text-sm font-medium hover:bg-brand-600 transition-colors" onclick="FTApp.syncToGist()">立即同步到 Gist</button>
+        <button class="bg-surface-elevated text-ink-secondary px-4 py-2 rounded-sm text-sm font-medium border border-edge-subtle hover:bg-surface-hover transition-colors" onclick="FTApp.restoreFromGist()">从 Gist 恢复</button>
+      </div>
+      <div class="form-help mt-2">同步后将数据备份到私有 Gist，换电脑/浏览器填入 Token + 恢复即可</div>
+    </div>
+    <input type="hidden" id="setApiUrl" value="">
   </div>
 
   <!-- Save Settings Button -->

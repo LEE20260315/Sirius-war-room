@@ -246,6 +246,30 @@
     <button class="bg-brand-500 text-brand-50 px-4 py-2 rounded-sm text-sm font-medium hover:bg-brand-600 transition-colors" onclick="FTRender.openJournalModal()">+ 添加日志</button>
   </div>
 
+  <!-- 搜索过滤栏 -->
+  <div class="bg-surface rounded-lg border border-edge-subtle p-3 mb-4 flex flex-wrap items-center gap-3">
+    <div class="flex items-center gap-2">
+      <label class="text-xs text-ink-muted">品种</label>
+      <select id="journalFilterSymbol" onchange="FTRender.renderJournal()" class="p-1 border border-edge rounded text-xs bg-surface text-ink">
+        <option value="">全部</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-2">
+      <label class="text-xs text-ink-muted">类型</label>
+      <select id="journalFilterType" onchange="FTRender.renderJournal()" class="p-1 border border-edge rounded text-xs bg-surface text-ink">
+        <option value="">全部</option>
+        <option value="trade">交易记录</option>
+        <option value="signal">信号触发</option>
+        <option value="note">市场观察</option>
+        <option value="risk">风控事件</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+      <label class="text-xs text-ink-muted">关键词</label>
+      <input type="text" id="journalFilterKeyword" oninput="FTRender.renderJournal()" placeholder="搜索标题/内容..." class="flex-1 p-1 border border-edge rounded text-xs bg-surface text-ink">
+    </div>
+  </div>
+
   <!-- Journal Timeline -->
   <div id="journalTimeline" class="ml-4">
     <!-- Journal entries rendered here by FTRender.renderJournal() -->

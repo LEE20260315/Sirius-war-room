@@ -198,6 +198,80 @@ function escapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// ============ SECURE STORAGE (sessionStorage) ============
+// 敏感信息（GitHub Token、API Key）存 sessionStorage，关闭标签即清除，不进入 localStorage
+function saveSecure(key, value) {
+  try { sessionStorage.setItem('ft_' + key, value); } catch(e) { console.warn('saveSecure 失败:', e); }
+}
+function loadSecure(key) {
+  try { return sessionStorage.getItem('ft_' + key); } catch(e) { return null; }
+}
+function removeSecure(key) {
+  try { sessionStorage.removeItem('ft_' + key); } catch(e) {}
+}
+
+// ============ GITHUB GIST SYNC ============
+async function syncToGist() {
+  var token = loadSecure('githubToken');
+  if (!token) { showToast('请先在设置页配置 GitHub Token'); return false; }
+  var gistId = loadSecure('gistId');
+  var payload = JSON.stringify(state, null, 2);
+  var url = gistId ? 'https://api.github.com/gists/' + gistId : 'https://api.github.com/gists';
+  var method = gistId ? 'PATCH' : 'POST';
+  try {
+    var res = await fetch(url, {
+      method: method,
+      headers: { 'Authorization': 'token ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: '期货模拟盘跟踪系统 - 自动备份',
+        public: false,
+        files: { 'futures-tracker-data.json': { content: payload } }
+      })
+    });
+    if (res.status === 401) { showToast('Token 已失效，请重新设置'); return false; }
+    if (!res.ok) { showToast('同步失败: HTTP ' + res.status); return false; }
+    var data = await res.json();
+    if (!gistId && data.id) { saveSecure('gistId', data.id); }
+    showToast('数据已同步到 GitHub Gist');
+    return true;
+  } catch(e) {
+    console.error('syncToGist 失败:', e);
+    showToast('同步失败: ' + e.message);
+    return false;
+  }
+}
+
+async function restoreFromGist() {
+  var token = loadSecure('githubToken');
+  var gistId = loadSecure('gistId');
+  if (!token || !gistId) { showToast('请先配置 Token 并同步过一次'); return false; }
+  try {
+    var res = await fetch('https://api.github.com/gists/' + gistId, {
+      headers: { 'Authorization': 'token ' + token }
+    });
+    if (res.status === 401) { showToast('Token 已失效，请重新设置'); return false; }
+    if (!res.ok) { showToast('恢复失败: HTTP ' + res.status); return false; }
+    var data = await res.json();
+    var file = data.files['futures-tracker-data.json'];
+    if (!file || !file.content) { showToast('Gist 中无数据文件'); return false; }
+    var restored = JSON.parse(file.content);
+    Object.assign(state, restored);
+    saveState();
+    showToast('已从 GitHub Gist 恢复数据');
+    if (window.FTRender) {
+      if (FTRender.renderPool) FTRender.renderPool();
+      if (FTRender.renderTrades) FTRender.renderTrades();
+      if (FTRender.renderJournal) FTRender.renderJournal();
+      if (FTRender.renderDashboard) FTRender.renderDashboard();
+    }
+    return true;
+  } catch(e) {
+    console.error('restoreFromGist 失败:', e);
+    showToast('恢复失败: ' + e.message);
+    return false;
+  }
+}
+
 // ============ PERSISTENCE BACKUP ============
 function exportData() {
   const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
@@ -278,6 +352,8 @@ function checkAutoBackup() {
       exportData();
     }
   }
+  // 若有 GitHub Token，自动同步到 Gist
+  if (loadSecure('githubToken')) syncToGist();
 }
 
 // ============ AUTO FETCH PRICES ============
@@ -855,6 +931,11 @@ function loadSettings() {
   setVal('setSlippage', s.slippage);
   setVal('setDataSource', s.dataSource);
   setVal('setApiUrl', s.apiUrl || '');
+  // Token 从 sessionStorage 读取回填（不来自 localStorage）
+  var tokenInput = document.getElementById('setGithubToken');
+  if (tokenInput) tokenInput.value = loadSecure('githubToken') || '';
+  var gistIdDisplay = document.getElementById('gistIdDisplay');
+  if (gistIdDisplay) gistIdDisplay.textContent = loadSecure('gistId') ? 'Gist ID: ' + loadSecure('gistId').substring(0,8) + '...' : '未同步';
   updateHeaderStats();
 }
 
@@ -871,6 +952,12 @@ function saveSettings() {
     dataSource: document.getElementById('setDataSource').value,
     apiUrl: document.getElementById('setApiUrl').value
   };
+  // GitHub Token 存 sessionStorage（不进入 localStorage 序列化）
+  var tokenInput = document.getElementById('setGithubToken');
+  if (tokenInput) {
+    if (tokenInput.value) saveSecure('githubToken', tokenInput.value);
+    else removeSecure('githubToken');
+  }
   // If initial equity changed, adjust equityHistory baseline proportionally
   if (oldInit !== state.settings.initEquity && state.equityHistory.length > 0) {
     const ratio = state.settings.initEquity / oldInit;
@@ -930,6 +1017,19 @@ function init() {
 }
 
 // ============ EXPORTS ============
+function requestNotificationPermission() {
+  if (!('Notification' in window)) { showToast('浏览器不支持通知'); return; }
+  Notification.requestPermission().then(function(perm) {
+    if (perm === 'granted') {
+      showToast('通知已开启');
+      var btn = document.getElementById('notifyBtn');
+      if (btn) { btn.textContent = '已开启通知'; btn.disabled = true; }
+    } else {
+      showToast('通知未授权');
+    }
+  });
+}
+
 window.FTApp = {
   // init / state
   init, loadState, saveState, state, getCurrentEquity, getRealizedEquity,
@@ -948,6 +1048,9 @@ window.FTApp = {
   setDataSourceStatus, setLastUpdateTime, updateHeaderStats,
   // 设置
   loadSettings, saveSettings,
+  // 安全存储 / Gist 同步 / 通知
+  saveSecure, loadSecure, removeSecure, syncToGist, restoreFromGist,
+  requestNotificationPermission,
   // 工具
   escapeHtml, isSweetSignal, validateContract,
   // 常量
