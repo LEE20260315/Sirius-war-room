@@ -151,6 +151,7 @@ let state = {
   journal: [],
   equityHistory: [],
   rolloverHistory: [],
+  priceSnapshots: {},   // { [symbol]: [{date:'YYYY-MM-DD', price}, ...] } 动量因子数据源
   lastBackup: null
 };
 
@@ -173,6 +174,8 @@ function loadState() {
         saveState();
       }
       if (!state.lastBackup) state.lastBackup = null;
+      // priceSnapshots 兼容旧版本：无则初始化为 {}
+      if (!state.priceSnapshots || typeof state.priceSnapshots !== 'object') state.priceSnapshots = {};
     } else {
       state.pool = JSON.parse(JSON.stringify(DEFAULT_COMMODITIES));
       state.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
@@ -255,7 +258,15 @@ async function restoreFromGist() {
     var file = data.files['futures-tracker-data.json'];
     if (!file || !file.content) { showToast('Gist 中无数据文件'); return false; }
     var restored = JSON.parse(file.content);
+    // 冲突确认：本地数据更新时弹窗确认是否用 Gist 覆盖
+    var localTs = state.lastBackup || null;
+    var gistTs = restored.lastBackup || null;
+    if (localTs && gistTs && localTs > gistTs) {
+      var ok = confirm('Gist 版本时间戳：' + gistTs + '\n本地版本时间戳：' + localTs + '\n本地数据更新，确认用 Gist 版本覆盖吗？');
+      if (!ok) { showToast('已取消恢复'); return false; }
+    }
     Object.assign(state, restored);
+    if (!state.priceSnapshots) state.priceSnapshots = {};
     saveState();
     showToast('已从 GitHub Gist 恢复数据');
     if (window.FTRender) {
@@ -270,6 +281,17 @@ async function restoreFromGist() {
     showToast('恢复失败: ' + e.message);
     return false;
   }
+}
+
+// 清除 Token：一键移除 sessionStorage 中的 Token 和 Gist ID
+function clearToken() {
+  removeSecure('githubToken');
+  removeSecure('gistId');
+  var tokenInput = document.getElementById('setGithubToken');
+  if (tokenInput) tokenInput.value = '';
+  var gistDisp = document.getElementById('gistIdDisplay');
+  if (gistDisp) gistDisp.textContent = '未同步';
+  showToast('Token 已从本地清除');
 }
 
 // ============ PERSISTENCE BACKUP ============
@@ -561,6 +583,7 @@ async function fetchPricesNow() {
   const futsseResult = await fetchPricesFromFutsseApi(state.pool);
   let futsseOk = futsseResult.ok;
   console.log('[FT] futsseapi: 成功', futsseOk);
+  var fetchFailReasons = [];
 
   // Step 1: EastMoney JSONP — CZCE/GFEX 及 futsseapi 未覆盖品种
   let emOk = 0, emFail = [];
@@ -580,7 +603,7 @@ async function fetchPricesNow() {
   console.log('[FT] 东财JSONP: 成功', emOk, '失败', emFail.length);
 
   // Step 2: Sina — 最后备用（浏览器需 CORS 代理，可能失败）
-  let sinaOk = 0;
+  let sinaOk = 0, sinaAttempted = 0;
   if (emFail.length) {
     setDataSourceStatus('loading', '数据源: 尝试新浪备用...');
     const sinaSymbols = [], symbolToPool = {};
@@ -589,11 +612,17 @@ async function fetchPricesNow() {
       if (s) { sinaSymbols.push(s); symbolToPool[s] = state.pool.find(x => x.symbol === sym); }
     });
     if (sinaSymbols.length) {
+      sinaAttempted = sinaSymbols.length;
       const sina = await fetchPricesFromSina(sinaSymbols, symbolToPool);
       sinaOk = sina.ok;
     }
   }
   console.log('[FT] 新浪: 成功', sinaOk);
+
+  // 追踪每路失败原因（用于全失败时展示）
+  if (futsseResult.total > 0 && futsseOk === 0) fetchFailReasons.push('futsseapi 无响应');
+  if (emFail.length > 0 && emOk === 0) fetchFailReasons.push('东财JSONP 无响应');
+  if (sinaAttempted > 0 && sinaOk === 0) fetchFailReasons.push('新浪超时');
 
   const totalOk = futsseOk + emOk + sinaOk;
   const elapsed = Date.now() - t0;
@@ -606,6 +635,8 @@ async function fetchPricesNow() {
       if (c.price && c.price > 0) {
         const pct = computePercentile(c.symbol, c.price);
         if (pct !== null) c.percentile = pct;
+        // 动量因子：记录当日价格快照
+        recordPriceSnapshot(c.symbol, c.price);
       }
     });
     saveState();
@@ -623,8 +654,9 @@ async function fetchPricesNow() {
   } else {
     setDataSourceStatus('offline', '数据源: 获取失败 · 手动模式');
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN') + ' (失败)');
-    showToast('行情自动获取失败，请手动输入价格（CZCE/GFEX品种需手动）');
-    console.warn('[FT] 所有自动数据源均失败。SHFE/DCE应可用futsseapi，CZCE/GFEX需手动。');
+    var reasonStr = fetchFailReasons.length ? fetchFailReasons.join(' / ') : '所有数据源无响应';
+    showToast('⚠ 行情获取失败：' + reasonStr + '，已切换手动模式');
+    console.warn('[FT] 所有自动数据源均失败。SHFE/DCE应可用futsseapi，CZCE/GFEX需手动。失败原因:', fetchFailReasons);
   }
   return {ok:totalOk, fail:poolLen - totalOk, total:poolLen};
 }
@@ -843,6 +875,64 @@ function computePercentile(symbol, price) {
   return pct;
 }
 
+// ============ MOMENTUM FACTOR (动量因子) ============
+// 价格快照积累 + MA20/MA60 + 近20日涨跌速率，作为三因子信号矩阵的动量维度数据源
+
+// 记录品种当日价格快照（同日覆盖，保留最近 60 条）
+function recordPriceSnapshot(symbol, price) {
+  if (!symbol || !price || price <= 0) return;
+  if (!state.priceSnapshots) state.priceSnapshots = {};
+  var today = new Date().toISOString().slice(0, 10);
+  var arr = state.priceSnapshots[symbol] || [];
+  // 同日覆盖
+  if (arr.length && arr[arr.length - 1].date === today) {
+    arr[arr.length - 1].price = price;
+  } else {
+    arr.push({ date: today, price: price });
+  }
+  // 保留最近 60 条
+  if (arr.length > 60) arr = arr.slice(arr.length - 60);
+  state.priceSnapshots[symbol] = arr;
+}
+
+// 计算动量指标：MA20/MA60、近20日涨跌速率、status、score
+// 返回 { ma20, ma60, roc20, score, status, samples }
+// status: 'up' | 'down' | 'flat' | 'unknown'（样本<20 时 unknown）
+function computeMomentum(symbol) {
+  var arr = (state.priceSnapshots && state.priceSnapshots[symbol]) || [];
+  var samples = arr.length;
+  if (samples < 20) {
+    return { ma20: null, ma60: null, roc20: null, score: null, status: 'unknown', samples: samples };
+  }
+  // 取最近的价格序列（按日期升序）
+  var prices = arr.map(function (s) { return s.price; });
+  var last = prices[prices.length - 1];
+  // MA20：最近 20 条均价
+  var ma20 = prices.slice(-20).reduce(function (a, b) { return a + b; }, 0) / 20;
+  // MA60：全部（最多60条）均价
+  var ma60 = prices.reduce(function (a, b) { return a + b; }, 0) / prices.length;
+  // roc20：近20日涨跌速率 = (last - 20日前) / 20日前 * 100
+  var ref = prices[prices.length - 20];
+  var roc20 = ref > 0 ? (last - ref) / ref * 100 : 0;
+  // status 判定
+  var status;
+  if (ma20 > ma60 && roc20 > 0) status = 'up';
+  else if (ma20 < ma60 && roc20 < 0) status = 'down';
+  else status = 'flat';
+  // score 归一化到 0-100（up 高分 / flat 中分 / down 低分）
+  var score;
+  if (status === 'up') {
+    // roc20 越大涨得越多越高，0~10% 映射到 70~100
+    score = Math.min(100, 70 + Math.min(Math.abs(roc20), 10) * 3);
+  } else if (status === 'down') {
+    // 跌得越多越低，0~10% 映射到 40~10
+    score = Math.max(0, 40 - Math.min(Math.abs(roc20), 10) * 3);
+  } else {
+    score = 55; // flat 中性偏上
+  }
+  return { ma20: ma20, ma60: ma60, roc20: roc20, score: score, status: status, samples: samples };
+}
+
 // 预计算百分位：在 renderPool/refreshSignals 之前调用，用存储价格更新所有品种的 percentile
 // 解决"不点刷新行情百分位就为0"的问题
 function ensurePercentileComputed() {
@@ -862,44 +952,35 @@ function getCostReference(symbol) {
   return costReference.records.find(r => r.symbol === symbol) || null;
 }
 
-// 获取有效基本面分数：手动分>0取手动分，否则取自动推算分
+// 获取外部日报基本面综合分（0-100），无数据返回 null
+// 数据源：window.__fundFeed（由 fundamental-feed.json 加载）
+function getFundamentalComposite(symbol) {
+  var feed = window.__fundFeed;
+  if (!feed || !feed.records || !feed.records.length) return null;
+  var feishuName = (PROJECT_TO_FEISHU_MAP && PROJECT_TO_FEISHU_MAP[symbol]) || symbol;
+  var v = feed.records[0].varieties && feed.records[0].varieties[feishuName];
+  if (v && v.score != null && v.score > 0) return v.score;
+  return null;
+}
+
+// 获取有效基本面分数：手动分>0取手动分，否则用外部日报综合分映射
 // dimKey: 'supply' | 'inventory' | 'basis'
+// 注意：不再基于百分位推算（消除低百分位→高分→甜点→买入的循环论证）
 function getEffectiveFundScore(symbol, dimKey) {
   var fund = state.fundamentals[symbol] || {};
   var dim = fund[dimKey] || {};
   var manualScore = (dim.score != null) ? dim.score : 0;
   if (manualScore > 0) return manualScore;  // 用户已手动评分，优先使用
 
-  // 自动推算：有外部日报→综合分映射；无外部日报→百分位推算
-  var c = state.pool.find(function(x) { return x.symbol === symbol; });
-  var pct = c ? (c.percentile || 0) : 0;
-  var feed = window.__fundFeed;
-  var extScore = null;
-  if (feed && feed.records && feed.records.length) {
-    var feishuName = (PROJECT_TO_FEISHU_MAP && PROJECT_TO_FEISHU_MAP[symbol]) || symbol;
-    var v = feed.records[0].varieties && feed.records[0].varieties[feishuName];
-    if (v && v.score != null) extScore = v.score;
-  }
+  // 用外部日报综合分映射到各维度分
+  var extScore = getFundamentalComposite(symbol);
+  if (extScore == null) return 0;  // 无外部数据，返回 0（不再百分位推算）
 
-  var score;
-  if (extScore != null) {
-    // 有外部日报：综合分≥60→7, ≥45→5, ≥30→3, <30→2（basis用8/6/4/2）
-    if (dimKey === 'basis') {
-      score = extScore >= 60 ? 8 : (extScore >= 45 ? 6 : (extScore >= 30 ? 4 : 2));
-    } else {
-      score = extScore >= 60 ? 7 : (extScore >= 45 ? 5 : (extScore >= 30 ? 3 : 2));
-    }
-  } else if (pct && pct > 0) {
-    // 无外部日报，基于百分位：≤20→7, ≤35→5, ≤50→3, >50→2（basis用8/6/4/2）
-    if (dimKey === 'basis') {
-      score = pct <= 20 ? 8 : (pct <= 35 ? 6 : (pct <= 50 ? 4 : 2));
-    } else {
-      score = pct <= 20 ? 7 : (pct <= 35 ? 5 : (pct <= 50 ? 3 : 2));
-    }
-  } else {
-    score = 0;
+  // 综合分≥60→7, ≥45→5, ≥30→3, <30→2（basis用8/6/4/2）
+  if (dimKey === 'basis') {
+    return extScore >= 60 ? 8 : (extScore >= 45 ? 6 : (extScore >= 30 ? 4 : 2));
   }
-  return score;
+  return extScore >= 60 ? 7 : (extScore >= 45 ? 5 : (extScore >= 30 ? 3 : 2));
 }
 
 function isSweetSignal(symbol) {
@@ -909,10 +990,13 @@ function isSweetSignal(symbol) {
   if (c.percentile == null || c.percentile === 0) return false;
   // 估值分：基于真实 percentile
   var valScore = c.percentile <= 20 ? 5 : c.percentile <= 35 ? 4 : c.percentile <= 50 ? 2 : 1;
-  // 使用有效基本面分数（手动分>0取手动分，否则取自动推算分）
+  // 外部综合分：无外部数据直接返回 false（不再百分位推算）
+  var extScore = getFundamentalComposite(symbol);
+  if (extScore == null || extScore < 50) return false;
+  // 使用有效基本面分数（手动分>0取手动分，否则取外部日报映射分）
   var supplyScore = getEffectiveFundScore(symbol, 'supply');
   var inventoryScore = getEffectiveFundScore(symbol, 'inventory');
-  // 基本面甜点：估值分≥4 AND 有效供给分≥5 AND 有效库存分≥5
+  // 基本面甜点：估值分≥4 AND 外部综合分≥50 AND 有效供给分≥5 AND 有效库存分≥5
   return valScore >= 4 && supplyScore >= 5 && inventoryScore >= 5;
 }
 
@@ -1049,7 +1133,7 @@ window.FTApp = {
   // 设置
   loadSettings, saveSettings,
   // 安全存储 / Gist 同步 / 通知
-  saveSecure, loadSecure, removeSecure, syncToGist, restoreFromGist,
+  saveSecure, loadSecure, removeSecure, syncToGist, restoreFromGist, clearToken,
   requestNotificationPermission,
   // 工具
   escapeHtml, isSweetSignal, validateContract,
@@ -1060,7 +1144,11 @@ window.FTApp = {
   findVarietyMeta,
   // 百分位/成本参考
   computePercentile, getCostReference, loadPriceHistory, loadCostReference,
-  ensurePercentileComputed, getEffectiveFundScore,
+  ensurePercentileComputed, getEffectiveFundScore, getFundamentalComposite,
+  // 动量因子
+  recordPriceSnapshot, computeMomentum,
+  // 资金曲线
+  updateEquityHistory,
   priceHistory: () => priceHistory,  // 用函数返回避免导出时为null
   costReference: () => costReference
 };

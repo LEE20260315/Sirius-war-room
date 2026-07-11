@@ -460,7 +460,7 @@
       FTApp.showToast('评分已保存');
     },
 
-    // ============ 8. 三因子信号矩阵 ============
+    // ============ 8. 三因子信号矩阵（估值·动量·基本面 加权 + 趋势过滤）============
     refreshSignals: function () {
       var body = el('signalBody');
       if (!body) return;
@@ -470,67 +470,124 @@
         return;
       }
       var html = '';
+      var buyCount = 0;  // 含买入+加仓，用于健康度统计
       pool.forEach(function (c) {
         var p = c.percentile || 0;
-        // 估值灯：基于真实 percentile
-        var valLight = p === 0 ? 'yellow' : (p <= 25 ? 'green' : (p <= 50 ? 'yellow' : 'red'));
-        // 基本面灯：综合 isSweetSignal 和外部日报综合分
-        var fundLight;
-        var extFundScore = null;
-        var feed = window.__fundFeed;
-        if (feed && feed.records && feed.records.length) {
-          var feishuName = (FTApp.PROJECT_TO_FEISHU_MAP && FTApp.PROJECT_TO_FEISHU_MAP[c.symbol]) || c.symbol;
-          var fv = feed.records[0].varieties && feed.records[0].varieties[feishuName];
-          if (fv && fv.score != null) extFundScore = fv.score;
-        }
-        if (FTApp.isSweetSignal(c.symbol)) {
-          fundLight = 'green';
-        } else if (extFundScore != null) {
-          fundLight = extFundScore >= 60 ? 'green' : (extFundScore >= 40 ? 'yellow' : 'red');
+        var hasPct = (p && p > 0);
+
+        // ---- 估值因子 ----
+        // 估值分（0-100）：低位=高分
+        var valScore = hasPct ? (100 - p) : null;
+        // 估值灯：p>75 red / p<=25 green / p<=50 yellow / 其他(含无数据) yellow
+        var valLight = !hasPct ? 'yellow' : (p > 75 ? 'red' : (p <= 25 ? 'green' : 'yellow'));
+
+        // ---- 动量因子 ----
+        var mom = FTApp.computeMomentum ? FTApp.computeMomentum(c.symbol) : { status: 'unknown', score: null, samples: 0 };
+        var momStatus = mom.status;
+        var momScore = mom.score;
+        // 动量灯：up green / flat yellow / down red / unknown gray
+        var momLight = momStatus === 'up' ? 'green' : (momStatus === 'down' ? 'red' : (momStatus === 'flat' ? 'yellow' : 'gray'));
+
+        // ---- 基本面因子 ----
+        var extFundScore = FTApp.getFundamentalComposite ? FTApp.getFundamentalComposite(c.symbol) : null;
+        // 基本面分（0-100）：有外部综合分用综合分，否则 null
+        var fundScore = extFundScore;
+        // 基本面灯：≥60 green / ≥40 yellow / <40 red / null gray
+        var fundLight = extFundScore == null ? 'gray' : (extFundScore >= 60 ? 'green' : (extFundScore >= 40 ? 'yellow' : 'red'));
+
+        // ---- 因子缺失判定 ----
+        var momUnknown = (momStatus === 'unknown');
+        var fundMissing = (extFundScore == null);
+        var factorMissing = momUnknown || fundMissing || !hasPct;
+
+        // ---- 加权综合评分 ----
+        // 综合评级分 = 估值分×0.4 + 动量分×0.35 + 基本面分×0.25（缺失因子按中性 50 计入但标记待验证）
+        var composite;
+        if (!factorMissing) {
+          composite = valScore * 0.4 + momScore * 0.35 + fundScore * 0.25;
         } else {
-          fundLight = 'yellow';
+          // 因子缺失：用已有因子加权，缺失按 50（中性）补位，但评级强制降级
+          var vPart = hasPct ? valScore : 50;
+          var mPart = momUnknown ? 50 : momScore;
+          var fPart = fundMissing ? 50 : fundScore;
+          composite = vPart * 0.4 + mPart * 0.35 + fPart * 0.25;
         }
-        // 资金/趋势灯：百分位+成本价差联合判断
-        // 获取有效成本
-        var effCost = c.costLine || 0;
-        if (effCost === 0 && FTApp.getCostReference) {
-          var ref = FTApp.getCostReference(c.symbol);
-          if (ref && ref.costDomestic > 0) effCost = ref.costDomestic;
-          else if (ref && ref.costImport > 0) effCost = ref.costImport;
+
+        // ---- 趋势过滤评级规则（按优先级判定）----
+        var rate, rateLight;
+        if (hasPct && p > 75) {
+          rate = '回避'; rateLight = 'red';
+        } else if (hasPct && p <= 25 && momStatus === 'down') {
+          rate = '观望'; rateLight = 'yellow';  // 低位 + 仍在下跌 → 不抄底
+        } else if (hasPct && p <= 25 && (momStatus === 'up' || momStatus === 'flat') && composite >= 70 && !factorMissing) {
+          rate = '买入'; rateLight = 'green';
+        } else if (hasPct && p <= 35 && momStatus !== 'down' && composite >= 60 && !factorMissing) {
+          rate = '加仓'; rateLight = 'green';
+        } else {
+          rate = '观望'; rateLight = 'yellow';
         }
-        var costDiff = (c.price && effCost > 0) ? (c.price - effCost) : 0;
-        var rateLight, rate;
-        if (p > 75) { rate = '回避'; rateLight = 'red'; }
-        else if (p <= 25 && costDiff < 0 && fundLight === 'green') { rate = '买入'; rateLight = 'green'; }
-        else if (p <= 25 && costDiff < 0) { rate = '加仓'; rateLight = 'green'; }
-        else { rate = '观望'; rateLight = 'yellow'; }
+        // 因子缺失强制降级为观望（不给出买入/加仓）
+        if (factorMissing && rateLight === 'green') { rate = '观望'; rateLight = 'yellow'; }
+        if (rate === '买入' || rate === '加仓') buyCount++;
+
         var rateCls = rateLight === 'green' ? 'text-success' : (rateLight === 'red' ? 'text-error' : 'text-ink-muted');
-        // 详情列
-        var costStr = costDiff !== 0 ? (costDiff > 0 ? '成本上+' : '成本下') + Math.abs(costDiff).toFixed(0) : '无成本数据';
-        var fundStr = fundLight === 'green' ? '甜点' : '一般';
-        var extStr = extFundScore != null ? '外部' + extFundScore.toFixed(0) + '分' : '手动评分';
-        // 信号通知：检测从非买入变为买入
-        var isBuySignal = (valLight === 'green' && FTApp.isSweetSignal(c.symbol));
+        // 待验证标签
+        var verifyTag = factorMissing ? ' <span class="text-xs text-ink-faint">(待验证)</span>' : '';
+
+        // ---- 详情列文案 ----
+        var valStr = hasPct ? ('估值' + p + '%') : '估值无数据';
+        var momStr;
+        if (momStatus === 'unknown') {
+          momStr = '动量待积累(' + mom.samples + '/20)';
+        } else {
+          var maTrend = mom.ma20 > mom.ma60 ? 'MA20>MA60' : (mom.ma20 < mom.ma60 ? 'MA20<MA60' : 'MA20≈MA60');
+          var rocStr = (mom.roc20 >= 0 ? '+' : '') + mom.roc20.toFixed(2) + '%';
+          momStr = '动量' + maTrend + ' roc' + rocStr;
+        }
+        var fundStr = extFundScore != null ? ('基本面外部' + extFundScore.toFixed(0) + '分') : '基本面无外部数据';
+        var extraStr = (hasPct && p <= 25 && momStatus === 'down') ? '，逆势不抄底' : '';
+        var detail = valStr + ' · ' + momStr + ' · ' + fundStr + extraStr;
+
+        // ---- 信号通知：检测从非买入变为买入 ----
+        var isBuySignal = (rate === '买入');
         var prevSignal = lastSignalMap[c.symbol];
         if (isBuySignal && prevSignal !== 'buy' && 'Notification' in window && Notification.permission === 'granted') {
           try {
             new Notification('📈 ' + c.symbol + ' 触发做多信号', {
-              body: '估值' + (p > 0 ? p + '%' : '无数据') + ' · ' + costStr + ' · ' + (extFundScore != null ? '外部' + extFundScore.toFixed(0) + '分' : '手动评分')
+              body: detail
             });
           } catch(e) {}
         }
         lastSignalMap[c.symbol] = isBuySignal ? 'buy' : 'other';
-        var detail = '估值' + (p > 0 ? p + '%' : '无数据') + '，' + costStr + '，基本面' + fundStr + '，' + extStr;
+
+        // 信号灯 HTML（gray 用内联样式，因 CSS 仅有 green/yellow/red）
+        function lightHtml(light) {
+          if (light === 'gray') return '<span class="signal-light" style="background:#6e6d68;box-shadow:0 0 6px #6e6d68"></span>';
+          return '<span class="signal-light signal-' + light + '"></span>';
+        }
+
         html += '<tr>' +
           '<td class="py-2 px-4 text-ink">' + FTApp.escapeHtml(c.symbol) + '</td>' +
-          '<td class="py-2 px-4"><span class="signal-light signal-' + valLight + '"></span></td>' +
-          '<td class="py-2 px-4"><span class="signal-light signal-' + rateLight + '"></span></td>' +
-          '<td class="py-2 px-4"><span class="signal-light signal-' + fundLight + '"></span></td>' +
-          '<td class="py-2 px-4"><span class="px-2 py-0.5 rounded text-xs font-medium ' + rateCls + '">' + rate + '</span></td>' +
+          '<td class="py-2 px-4">' + lightHtml(valLight) + '</td>' +
+          '<td class="py-2 px-4">' + lightHtml(momLight) + '</td>' +
+          '<td class="py-2 px-4">' + lightHtml(fundLight) + '</td>' +
+          '<td class="py-2 px-4"><span class="px-2 py-0.5 rounded text-xs font-medium ' + rateCls + '">' + rate + '</span>' + verifyTag + '</td>' +
           '<td class="py-2 px-4 text-xs text-ink-dim">' + FTApp.escapeHtml(detail) + '</td>' +
           '</tr>';
       });
       body.innerHTML = html;
+
+      // ---- 信号分布健康度提示 ----
+      var warnBox = el('signalHealthWarn');
+      if (warnBox) {
+        var buyPct = pool.length ? Math.round(buyCount / pool.length * 100) : 0;
+        if (buyPct > 60) {
+          warnBox.innerHTML = '<div class="alert-box" style="background:rgba(239,68,68,0.1);border-color:#ef4444;color:#ef4444">' +
+            '⚠ 买入信号占比 ' + buyPct + '%，信号高度趋同，可能因子失效或存在系统性风险，请谨慎</div>';
+        } else {
+          warnBox.innerHTML = '';
+        }
+      }
     },
 
     // ============ 9. 持仓 / 已平仓渲染 ============
@@ -679,6 +736,13 @@
     closeRolloverModal: function () { FTApp.closeModal('rolloverModal'); },
 
     // ============ 11. 交易日志渲染 ============
+    clearJournalFilter: function () {
+      var s = el('journalFilterSymbol'); if (s) s.value = '';
+      var t = el('journalFilterType'); if (t) t.value = '';
+      var k = el('journalFilterKeyword'); if (k) k.value = '';
+      this.renderJournal();
+    },
+
     renderJournal: function () {
       var tl = el('journalTimeline');
       var empty = el('journalEmpty');
@@ -807,42 +871,101 @@
       cv.width = W; cv.height = H;
       ctx.clearRect(0, 0, W, H);
       var hist = FTApp.state.equityHistory || [];
+      // 兜底：equityHistory 不足但 closedTrades 有数据时，用平仓记录构建临时曲线
+      var useFallback = false;
+      if (hist.length < 2) {
+        var closed = FTApp.state.closedTrades || [];
+        if (closed.length) {
+          useFallback = true;
+          var initEq = FTApp.state.settings.initEquity || 15000;
+          // 按日期排序累加 pnl
+          var sorted = closed.slice().sort(function (a, b) {
+            return (a.closeTime || '').localeCompare(b.closeTime || '');
+          });
+          var eq = initEq;
+          hist = [{ date: '起始', equity: initEq }];
+          sorted.forEach(function (t) {
+            eq += (t.pnl || 0);
+            hist.push({ date: t.closeTime || '', equity: eq });
+          });
+        }
+      }
       if (hist.length < 2) {
         ctx.fillStyle = '#908e84';
         ctx.font = '13px Poppins, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('资金曲线数据不足', W / 2, H / 2);
+        ctx.fillText('资金曲线数据不足（平仓后将自动积累）', W / 2, H / 2);
         return;
       }
       var vals = hist.map(function (h) { return h.equity; });
       var min = Math.min.apply(null, vals);
       var max = Math.max.apply(null, vals);
+      // 起始资金参与量程，保证基线可见
+      var initEq = FTApp.state.settings.initEquity || 15000;
+      min = Math.min(min, initEq);
+      max = Math.max(max, initEq);
       if (min === max) { min -= 1; max += 1; }
-      var pad = 36;
-      var xStep = (W - pad * 2) / (hist.length - 1);
-      // 基线
+      var padL = 56, padR = 16, padT = 16, padB = 36;
+      var plotW = W - padL - padR;
+      var plotH = H - padT - padB;
+      var xStep = plotW / (hist.length - 1);
+      function yOf(v) { return (H - padB) - ((v - min) / (max - min)) * plotH; }
+
+      // ---- 起始资金水平基线（虚线）----
+      var baseY = yOf(initEq);
+      ctx.strokeStyle = 'rgba(140,160,111,0.5)'; ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(padL, baseY); ctx.lineTo(W - padR, baseY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#8ca06f'; ctx.font = '10px "Geist Mono", monospace'; ctx.textAlign = 'left';
+      ctx.fillText('起始 ' + initEq.toLocaleString('zh-CN'), padL + 2, baseY - 4);
+
+      // ---- X 轴基线 ----
       ctx.strokeStyle = '#3e3e38'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(pad, H - pad); ctx.lineTo(W - pad, H - pad); ctx.stroke();
-      // 折线
+      ctx.beginPath(); ctx.moveTo(padL, H - padB); ctx.lineTo(W - padR, H - padB); ctx.stroke();
+
+      // ---- 折线 ----
       ctx.strokeStyle = '#d97757'; ctx.lineWidth = 2; ctx.beginPath();
       hist.forEach(function (h, i) {
-        var x = pad + i * xStep;
-        var y = (H - pad) - ((h.equity - min) / (max - min)) * (H - pad * 2);
+        var x = padL + i * xStep;
+        var y = yOf(h.equity);
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       });
       ctx.stroke();
       // 渐变填充
-      ctx.lineTo(pad + (hist.length - 1) * xStep, H - pad);
-      ctx.lineTo(pad, H - pad);
+      ctx.lineTo(padL + (hist.length - 1) * xStep, H - padB);
+      ctx.lineTo(padL, H - padB);
       ctx.closePath();
       ctx.fillStyle = 'rgba(217,119,87,0.12)';
       ctx.fill();
-      // 极值标签
-      ctx.fillStyle = '#908e84';
-      ctx.font = '11px "Geist Mono", monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText(max.toFixed(0), 2, 12);
-      ctx.fillText(min.toFixed(0), 2, H - pad + 14);
+
+      // ---- Y 轴金额标签（max / mid / min）----
+      ctx.fillStyle = '#908e84'; ctx.font = '10px "Geist Mono", monospace'; ctx.textAlign = 'right';
+      ctx.fillText(max.toLocaleString('zh-CN'), padL - 4, padT + 8);
+      ctx.fillText(((max + min) / 2).toLocaleString('zh-CN'), padL - 4, padT + plotH / 2);
+      ctx.fillText(min.toLocaleString('zh-CN'), padL - 4, H - padB + 2);
+
+      // ---- X 轴日期标签（首/中/末）----
+      ctx.textAlign = 'center';
+      var first = hist[0], last = hist[hist.length - 1];
+      var mid = hist[Math.floor((hist.length - 1) / 2)];
+      ctx.fillText((first.date || '').slice(5), padL, H - padB + 14);
+      ctx.fillText((mid.date || '').slice(5), padL + (hist.length - 1) * xStep / 2, H - padB + 14);
+      ctx.fillText((last.date || '').slice(5), padL + (hist.length - 1) * xStep, H - padB + 14);
+
+      // ---- 末端净值标注 ----
+      var lastX = padL + (hist.length - 1) * xStep;
+      var lastY = yOf(last.equity);
+      ctx.fillStyle = '#d97757';
+      ctx.beginPath(); ctx.arc(lastX, lastY, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#faf9f5'; ctx.font = '11px "Geist Mono", monospace'; ctx.textAlign = 'right';
+      ctx.fillText(last.equity.toLocaleString('zh-CN', { maximumFractionDigits: 0 }), lastX - 6, lastY - 8);
+
+      // 兜底曲线水印
+      if (useFallback) {
+        ctx.fillStyle = '#6e6d68'; ctx.font = '10px Poppins, sans-serif'; ctx.textAlign = 'right';
+        ctx.fillText('(基于平仓记录临时曲线)', W - padR - 2, padT + 8);
+      }
     },
 
     // 移仓换月记录表
@@ -997,6 +1120,8 @@
     FTApp.saveState();
     FTApp.closeModal('closeModal');
     if (window.FTRender && FTRender.renderTrades) FTRender.renderTrades();
+    // 平仓后追加资金曲线节点
+    if (FTApp.updateEquityHistory) FTApp.updateEquityHistory();
     FTApp.showToast('已平仓 ' + sym);
   };
 
