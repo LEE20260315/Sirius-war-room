@@ -793,14 +793,26 @@ function getRealizedEquity() {
 
 function onPriceUpdate() {
   saveState();
-  // 多页 HTML 架构下，tab-trade / tab-dashboard 元素并不总是存在，需判空
-  const tabTrade = document.getElementById('tab-trade');
-  if (tabTrade && tabTrade.classList.contains('active')) {
-    if (window.FTRender && window.FTRender.renderTrades) window.FTRender.renderTrades();
+  // 多页 HTML 架构：根据当前页面 URL 判断需要重渲染的模块
+  var path = (location.pathname || '').toLowerCase();
+  // 交易页：刷新持仓表
+  if (path.indexOf('trade.html') >= 0 || document.getElementById('tab-trade')) {
+    var tabTrade = document.getElementById('tab-trade');
+    if (!tabTrade || tabTrade.classList.contains('active')) {
+      if (window.FTRender && window.FTRender.renderTrades) window.FTRender.renderTrades();
+    }
   }
-  const tabDashboard = document.getElementById('tab-dashboard');
-  if (tabDashboard && tabDashboard.classList.contains('active')) {
+  // 仪表盘页：刷新资金曲线（含实时点）
+  if (path.indexOf('dashboard.html') >= 0 || document.getElementById('equityChart')) {
     if (window.FTRender && window.FTRender.renderDashboard) window.FTRender.renderDashboard();
+  }
+  // 观察池页：刷新分位/价差
+  if (path.indexOf('pool.html') >= 0 || document.getElementById('poolBody')) {
+    if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool();
+  }
+  // 信号页：刷新信号矩阵（价格变化可能影响估值灯）
+  if (path.indexOf('signal.html') >= 0 || document.getElementById('signalBody')) {
+    if (window.FTRender && window.FTRender.refreshSignals) window.FTRender.refreshSignals();
   }
 }
 

@@ -906,6 +906,23 @@
           });
         }
       }
+      // 追加"实时点"：当前净值含未平仓浮动盈亏，让曲线随行情刷新动态延伸
+      // 仅当存在持仓(closedTrades 或 trades)时才追加，避免空仓画无意义的实时点
+      var hasPosition = (FTApp.state.closedTrades && FTApp.state.closedTrades.length > 0) ||
+                        (FTApp.state.trades && FTApp.state.trades.length > 0);
+      var liveEq = hasPosition && FTApp.getCurrentEquity ? FTApp.getCurrentEquity() : null;
+      var livePointAppended = false;
+      if (liveEq != null && hist.length > 0) {
+        var lastHist = hist[hist.length - 1];
+        var today = new Date().toISOString().slice(0, 10);
+        // 若今日已有节点，直接更新为实时净值；否则追加一个实时点
+        if (lastHist.date === today) {
+          lastHist.equity = liveEq;
+        } else {
+          hist = hist.concat([{ date: today, equity: liveEq }]);
+          livePointAppended = true;
+        }
+      }
       if (hist.length < 2) {
         ctx.fillStyle = '#908e84';
         ctx.font = '13px Poppins, sans-serif';
@@ -969,13 +986,23 @@
       ctx.fillText((mid.date || '').slice(5), padL + (hist.length - 1) * xStep / 2, H - padB + 14);
       ctx.fillText((last.date || '').slice(5), padL + (hist.length - 1) * xStep, H - padB + 14);
 
-      // ---- 末端净值标注 ----
+      // ---- 末端净值标注（实时点用高亮色+脉冲圈，历史点用普通色）----
       var lastX = padL + (hist.length - 1) * xStep;
       var lastY = yOf(last.equity);
-      ctx.fillStyle = '#d97757';
-      ctx.beginPath(); ctx.arc(lastX, lastY, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#faf9f5'; ctx.font = '11px "Geist Mono", monospace'; ctx.textAlign = 'right';
-      ctx.fillText(last.equity.toLocaleString('zh-CN', { maximumFractionDigits: 0 }), lastX - 6, lastY - 8);
+      if (livePointAppended || (hasPosition && last.date === new Date().toISOString().slice(0,10))) {
+        // 实时点：含浮动盈亏，用高亮色 + 脉冲外圈
+        ctx.strokeStyle = 'rgba(217,119,87,0.4)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(lastX, lastY, 6, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#d97757';
+        ctx.beginPath(); ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#faf9f5'; ctx.font = '11px "Geist Mono", monospace'; ctx.textAlign = 'right';
+        ctx.fillText(last.equity.toLocaleString('zh-CN', { maximumFractionDigits: 0 }) + ' (实时)', lastX - 6, lastY - 8);
+      } else {
+        ctx.fillStyle = '#d97757';
+        ctx.beginPath(); ctx.arc(lastX, lastY, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#faf9f5'; ctx.font = '11px "Geist Mono", monospace'; ctx.textAlign = 'right';
+        ctx.fillText(last.equity.toLocaleString('zh-CN', { maximumFractionDigits: 0 }), lastX - 6, lastY - 8);
+      }
 
       // 兜底曲线水印
       if (useFallback) {
