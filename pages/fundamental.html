@@ -421,66 +421,21 @@
 <script src="../shared/trade-engine.js"></script>
 <script src="../shared/chart-engine.js"></script>
 <script src="../shared/ui-core.js"></script>
+<script src="../shared/fund-dimension-config.js"></script>
 <script>
 // === 基本面评分改造：按数据真实来源分档填充，无来源则留空标注 ===
 // 仅覆写 FTRender 的 loadFundamental / updateFundTotal / renderExternalFundSignal，
-// 不修改 shared/ui-core.js。配置 + 解析辅助 + 覆写均在此内联脚本中。
+// 不修改 shared/ui-core.js。FUND_DIMENSION_CONFIG / mapIndicatorToDim 由 shared/fund-dimension-config.js 提供。
 (function () {
   'use strict';
 
   // 简捷取元素（内联脚本作用域私有，避免污染全局）
   var el = function (id) { return document.getElementById(id); };
 
-  // ===== Task 1: 维度配置 =====
-  var FUND_DIMENSION_CONFIG = {
-    dimensions: [
-      { key: 'macro',     name: '宏观环境', inputId: 'fundMacro',     noteId: 'fundMacroNote' },
-      { key: 'supply',    name: '供需格局', inputId: 'fundSupply',    noteId: 'fundSupplyNote' },
-      { key: 'inventory', name: '库存水平', inputId: 'fundInventory', noteId: 'fundInventoryNote' },
-      { key: 'basis',     name: '基差结构', inputId: 'fundBasis',     noteId: 'fundBasisNote' },
-      { key: 'technical', name: '技术形态', inputId: 'fundTechnical', noteId: 'fundTechnicalNote' }
-    ],
-    indicatorToDimension: {
-      macro:     ['FRED', 'DXY', 'GPR', 'VIX'],           // 前缀匹配
-      supply:    ['ONI', 'ENSO_FORECAST', 'MPOB_STOCK', 'WASDE_STOCK'],
-      inventory: ['COMEX', 'LME', 'DOMESTIC_INV', 'COT']
-    },
-    varietyTemplates: {
-      '棕榈油': 'agri', '天然橡胶': 'agri', '白糖': 'agri', '橡胶': 'agri',
-      '黄金': 'metal', '白银': 'metal', '铜': 'metal',
-      '碳酸锂': 'lightweight', '螺纹钢': 'lightweight', '玻璃': 'lightweight', '多晶硅': 'lightweight'
-    },
-    templates: {
-      agri: {
-        dims: { supply: 0.35, inventory: 0.30, macro: 0.15, basis: 0.10, technical: 0.10 },
-        note: ''
-      },
-      metal: {
-        dims: { macro: 1.0 },
-        note: '当前为宏观情绪分，非品种基本面',
-        grayOut: ['supply', 'inventory', 'basis', 'technical']  // 标灰"无品种级数据源"
-      },
-      lightweight: {
-        dims: {},
-        note: '⚠ 轻量模组，仅供参考',
-        isLightweight: true
-      }
-    },
-    refuseThreshold: 0.5
-  };
-  // 暴露到全局便于调试
-  window.FUND_DIMENSION_CONFIG = FUND_DIMENSION_CONFIG;
+  // FUND_DIMENSION_CONFIG / mapIndicatorToDim 由 shared/fund-dimension-config.js 全局提供
+  var FUND_DIMENSION_CONFIG = window.FUND_DIMENSION_CONFIG;
 
-  // 预排序 indicatorToDimension 前缀（按长度降序，避免短前缀误匹配）
-  var _PREFIX_ENTRIES = [];
-  Object.keys(FUND_DIMENSION_CONFIG.indicatorToDimension).forEach(function (dim) {
-    FUND_DIMENSION_CONFIG.indicatorToDimension[dim].forEach(function (p) {
-      _PREFIX_ENTRIES.push({ prefix: p, dim: dim });
-    });
-  });
-  _PREFIX_ENTRIES.sort(function (a, b) { return b.prefix.length - a.prefix.length; });
-
-  // ===== Task 2: fullReport 解析辅助 =====
+  // ===== fullReport 解析辅助 =====
 
   // 提取品种小节：同时匹配 【品种名】 与 【〔轻量〕品种名】
   function parseVarietySection(fullReport, feishuName) {
@@ -522,14 +477,7 @@
     return m ? parseFloat(m[1]) : null;
   }
 
-  // 指标名 → 维度 key（前缀匹配，已按长度降序）
-  function mapIndicatorToDim(name) {
-    if (!name) return null;
-    for (var i = 0; i < _PREFIX_ENTRIES.length; i++) {
-      if (name.indexOf(_PREFIX_ENTRIES[i].prefix) === 0) return _PREFIX_ENTRIES[i].dim;
-    }
-    return null;
-  }
+  // mapIndicatorToDim 由 shared/fund-dimension-config.js 全局提供（前缀匹配，已按长度降序）
 
   // 维度内加权得分：Σ(pct_or_100-pct × w)/Σw/10，反向取 100-pct
   function computeDimScore(indicators) {
@@ -876,7 +824,7 @@ input:checked+.slider:before{transform:translateX(16px);background:#faf9f5}
 .alert-box{background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:8px;padding:12px;margin:8px 0;color:#ef4444;font-weight:500;font-size:13px}
 .info-box{background:rgba(217,119,87,0.08);border:1px solid #d97757;border-radius:8px;padding:12px;margin:8px 0;color:#d97757;font-size:13px}
 .progress-bar{background:#30302e;border-radius:10px;height:20px;overflow:hidden;margin:8px 0}
-.progress-fill{height:100%;background:linear-gradient(90deg,#8ca06f,#d97757);border-radius:10px;transition:width .5s;display:flex;align-items:center;justify-content:center;color:#faf9f5;font-size:11px;font-weight:600}
+.progress-fill{height:100%;background:linear-gradient(90deg,#5c7a3e,#d97757);border-radius:10px;transition:width .5s;display:flex;align-items:center;justify-content:center;color:#faf9f5;font-size:11px;font-weight:600}
 .empty-state{text-align:center;padding:40px;color:#908e84;font-family:Lora,Georgia,ui-serif,serif;font-style:italic}
 canvas{width:100%!important;max-height:300px}
 /* Fundamental score bars */
