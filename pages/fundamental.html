@@ -408,6 +408,8 @@
       </table>
     </div>
   </div>
+  <!-- 拒绝出分原因清单（数据不足时由 updateFundTotal 渲染） -->
+  <div id="fundRefuseReasons" class="mb-3"></div>
   <!-- Action Buttons -->
   <div class="flex gap-2 flex-wrap">
     <button class="bg-brand-500 text-brand-50 px-4 py-2 rounded-sm text-sm font-medium hover:bg-brand-600 transition-colors" onclick="FTRender.saveFundamental()">保存评分</button>
@@ -419,6 +421,405 @@
 <script src="../shared/trade-engine.js"></script>
 <script src="../shared/chart-engine.js"></script>
 <script src="../shared/ui-core.js"></script>
+<script>
+// === 基本面评分改造：按数据真实来源分档填充，无来源则留空标注 ===
+// 仅覆写 FTRender 的 loadFundamental / updateFundTotal / renderExternalFundSignal，
+// 不修改 shared/ui-core.js。配置 + 解析辅助 + 覆写均在此内联脚本中。
+(function () {
+  'use strict';
+
+  // 简捷取元素（内联脚本作用域私有，避免污染全局）
+  var el = function (id) { return document.getElementById(id); };
+
+  // ===== Task 1: 维度配置 =====
+  var FUND_DIMENSION_CONFIG = {
+    dimensions: [
+      { key: 'macro',     name: '宏观环境', inputId: 'fundMacro',     noteId: 'fundMacroNote' },
+      { key: 'supply',    name: '供需格局', inputId: 'fundSupply',    noteId: 'fundSupplyNote' },
+      { key: 'inventory', name: '库存水平', inputId: 'fundInventory', noteId: 'fundInventoryNote' },
+      { key: 'basis',     name: '基差结构', inputId: 'fundBasis',     noteId: 'fundBasisNote' },
+      { key: 'technical', name: '技术形态', inputId: 'fundTechnical', noteId: 'fundTechnicalNote' }
+    ],
+    indicatorToDimension: {
+      macro:     ['FRED', 'DXY', 'GPR', 'VIX'],           // 前缀匹配
+      supply:    ['ONI', 'ENSO_FORECAST', 'MPOB_STOCK', 'WASDE_STOCK'],
+      inventory: ['COMEX', 'LME', 'DOMESTIC_INV', 'COT']
+    },
+    varietyTemplates: {
+      '棕榈油': 'agri', '天然橡胶': 'agri', '白糖': 'agri', '橡胶': 'agri',
+      '黄金': 'metal', '白银': 'metal', '铜': 'metal',
+      '碳酸锂': 'lightweight', '螺纹钢': 'lightweight', '玻璃': 'lightweight', '多晶硅': 'lightweight'
+    },
+    templates: {
+      agri: {
+        dims: { supply: 0.35, inventory: 0.30, macro: 0.15, basis: 0.10, technical: 0.10 },
+        note: ''
+      },
+      metal: {
+        dims: { macro: 1.0 },
+        note: '当前为宏观情绪分，非品种基本面',
+        grayOut: ['supply', 'inventory', 'basis', 'technical']  // 标灰"无品种级数据源"
+      },
+      lightweight: {
+        dims: {},
+        note: '⚠ 轻量模组，仅供参考',
+        isLightweight: true
+      }
+    },
+    refuseThreshold: 0.5
+  };
+  // 暴露到全局便于调试
+  window.FUND_DIMENSION_CONFIG = FUND_DIMENSION_CONFIG;
+
+  // 预排序 indicatorToDimension 前缀（按长度降序，避免短前缀误匹配）
+  var _PREFIX_ENTRIES = [];
+  Object.keys(FUND_DIMENSION_CONFIG.indicatorToDimension).forEach(function (dim) {
+    FUND_DIMENSION_CONFIG.indicatorToDimension[dim].forEach(function (p) {
+      _PREFIX_ENTRIES.push({ prefix: p, dim: dim });
+    });
+  });
+  _PREFIX_ENTRIES.sort(function (a, b) { return b.prefix.length - a.prefix.length; });
+
+  // ===== Task 2: fullReport 解析辅助 =====
+
+  // 提取品种小节：同时匹配 【品种名】 与 【〔轻量〕品种名】
+  function parseVarietySection(fullReport, feishuName) {
+    if (!fullReport || !feishuName) return '';
+    var name = String(feishuName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var re = new RegExp('【(?:〔轻量〕)?' + name + '】([\\s\\S]*?)(?=\\n【|\\n━|$)');
+    var m = fullReport.match(re);
+    return m ? m[1].trim() : '';
+  }
+
+  // 解析 active 指标行：NAME  pct  (方向,w=权重) 样本N
+  function parseActiveIndicators(section) {
+    if (!section) return [];
+    var re = /^\s*([A-Z][A-Z0-9_]*)\s+([\d.]+)\s+\(([^,]+),w=([\d.]+)\)/;
+    var out = [];
+    section.split(/\n/).forEach(function (line) {
+      var m = line.match(re);
+      if (m) out.push({ name: m[1], pct: parseFloat(m[2]), weight: parseFloat(m[4]), dir: m[3].trim() });
+    });
+    return out;
+  }
+
+  // 解析缺失分项（按指标名去重，日报中 OIL_WTI 常被重复列出）
+  function parseMissingItems(section) {
+    if (!section) return [];
+    var re = /^\s+-\s+([A-Z][A-Z0-9_]*):\s*(.+)$/;
+    var seen = {}, out = [];
+    section.split(/\n/).forEach(function (line) {
+      var m = line.match(re);
+      if (m && !seen[m[1]]) { seen[m[1]] = true; out.push({ name: m[1], reason: m[2].trim() }); }
+    });
+    return out;
+  }
+
+  // 解析轻量模组仓单分位
+  function parseWarehouseReceipt(section) {
+    if (!section) return null;
+    var m = section.match(/仓单分位:\s*([\d.]+)/);
+    return m ? parseFloat(m[1]) : null;
+  }
+
+  // 指标名 → 维度 key（前缀匹配，已按长度降序）
+  function mapIndicatorToDim(name) {
+    if (!name) return null;
+    for (var i = 0; i < _PREFIX_ENTRIES.length; i++) {
+      if (name.indexOf(_PREFIX_ENTRIES[i].prefix) === 0) return _PREFIX_ENTRIES[i].dim;
+    }
+    return null;
+  }
+
+  // 维度内加权得分：Σ(pct_or_100-pct × w)/Σw/10，反向取 100-pct
+  function computeDimScore(indicators) {
+    if (!indicators || !indicators.length) return null;
+    var num = 0, den = 0;
+    indicators.forEach(function (ind) {
+      var eff = (ind.dir === '反向') ? (100 - ind.pct) : ind.pct;
+      num += eff * ind.weight;
+      den += ind.weight;
+    });
+    if (den <= 0) return null;
+    var s = num / den / 10;
+    if (s < 0) s = 0;
+    if (s > 10) s = 10;
+    return Math.round(s * 10) / 10;
+  }
+
+  function formatIndicatorNote(indicators) {
+    return indicators.map(function (ind) { return ind.name + ' ' + ind.pct.toFixed(1); }).join(', ');
+  }
+
+  // 按维度归组 active 指标
+  function groupIndicatorsByDim(indicators) {
+    var groups = { macro: [], supply: [], inventory: [], basis: [], technical: [] };
+    (indicators || []).forEach(function (ind) {
+      var d = mapIndicatorToDim(ind.name);
+      if (d && groups[d]) groups[d].push(ind);
+    });
+    return groups;
+  }
+
+  // 设置某个维度 input + span + note
+  function setDim(dim, score, spanText, note, opts) {
+    var sInp = el(dim.inputId), nInp = el(dim.noteId);
+    if (!sInp) return;
+    sInp.disabled = !!(opts && opts.disabled);
+    sInp.value = score;
+    if (sInp.nextElementSibling) {
+      sInp.nextElementSibling.textContent = spanText;
+      sInp.nextElementSibling.style.color = (opts && opts.gray) ? '#6e6d68' : '';
+    }
+    if (nInp) {
+      nInp.disabled = !!(opts && opts.disabled);
+      nInp.value = note;
+    }
+  }
+
+  // ===== Task 3: 覆写 loadFundamental =====
+  FTRender.loadFundamental = function () {
+    var sel = el('fundSpeciesSelect');
+    var sym = sel ? sel.value : '';
+    var cfg = FUND_DIMENSION_CONFIG;
+    var dims = cfg.dimensions;
+    var feed = window.__fundFeed;
+    var record = (feed && feed.records && feed.records.length) ? feed.records[0] : null;
+
+    // 先重置所有维度到默认
+    dims.forEach(function (dim) { setDim(dim, 0, '0', '', { disabled: false }); });
+
+    if (!sym) {
+      var h0 = el('fundHint'); if (h0) h0.innerHTML = '';
+      FTRender._currentFundState = { sym: '', feishuName: '', template: null, activeIndicators: [], missingItems: [], warehousePct: null };
+      this.updateFundTotal();
+      this.renderExternalFundSignal();
+      return;
+    }
+
+    var feishuName = (FTApp.PROJECT_TO_FEISHU_MAP && FTApp.PROJECT_TO_FEISHU_MAP[sym]) || sym;
+    var section = (record && record.fullReport) ? parseVarietySection(record.fullReport, feishuName) : '';
+    var activeIndicators = parseActiveIndicators(section);
+    var missingItems = parseMissingItems(section);
+    var warehousePct = parseWarehouseReceipt(section);
+    var templateName = cfg.varietyTemplates[sym] || cfg.varietyTemplates[feishuName] || 'agri';
+    var extV = (record && record.varieties) ? record.varieties[feishuName] : null;
+    var extScore = extV ? extV.score : null;
+    var fund = (FTApp.state && FTApp.state.fundamentals) ? (FTApp.state.fundamentals[sym] || {}) : {};
+    var hint = el('fundHint');
+
+    // 无 record / 无小节：全部"无数据源"
+    if (!record || !section) {
+      dims.forEach(function (dim) { setDim(dim, 0, '—', '无数据源', { disabled: false }); });
+      if (hint) hint.innerHTML = '<span style="color:#e08d6f">⚠ ' + FTApp.escapeHtml(sym) + ' 无外部日报小节，请手动填写各维度评分</span>';
+      FTRender._currentFundState = { sym: sym, feishuName: feishuName, template: templateName, activeIndicators: activeIndicators, missingItems: missingItems, warehousePct: warehousePct };
+      this.updateFundTotal();
+      this.renderExternalFundSignal();
+      return;
+    }
+
+    var groups = groupIndicatorsByDim(activeIndicators);
+
+    if (templateName === 'lightweight') {
+      // 轻量模组：全部 disabled，hint 显示仓单分位
+      dims.forEach(function (dim) { setDim(dim, 0, '—', '⚠ 轻量模组，仅供参考', { disabled: true, gray: true }); });
+      if (hint) {
+        hint.innerHTML = '<span style="color:#fdd835">⚠ 轻量模组，仅供参考 · 仓单分位: ' + (warehousePct != null ? warehousePct.toFixed(1) : '--') + '</span>';
+      }
+    } else if (templateName === 'metal') {
+      var tpl = cfg.templates.metal;
+      var grayOut = tpl.grayOut || [];
+      dims.forEach(function (dim) {
+        if (grayOut.indexOf(dim.key) >= 0) {
+          setDim(dim, 0, '无品种级数据源', '无品种级数据源', { disabled: true, gray: true });
+        } else {
+          // macro 维度亮分
+          var inds = groups[dim.key] || [];
+          if (inds.length > 0) {
+            var sc = computeDimScore(inds);
+            setDim(dim, sc, String(sc), formatIndicatorNote(inds), { disabled: false });
+          } else {
+            var saved = fund[dim.key] || {};
+            var ms = (saved.score != null) ? saved.score : 0;
+            setDim(dim, ms, ms > 0 ? String(ms) : '—', saved.note || '无数据源', { disabled: false });
+          }
+        }
+      });
+      if (hint) {
+        hint.innerHTML = '<span style="color:#b7b5a9">📊 外部日报：' + FTApp.escapeHtml(sym) + (extScore != null ? ' 综合分 ' + extScore.toFixed(1) : '') + ' · ' + FTApp.escapeHtml(tpl.note) + '</span>';
+      }
+    } else {
+      // agri（默认）
+      dims.forEach(function (dim) {
+        var inds = groups[dim.key] || [];
+        if (inds.length > 0) {
+          var sc = computeDimScore(inds);
+          setDim(dim, sc, String(sc), formatIndicatorNote(inds), { disabled: false });
+        } else if (dim.key === 'basis' || dim.key === 'technical') {
+          // basis/technical 始终"待手动输入"，回填手动保存值
+          var saved = fund[dim.key] || {};
+          var ms = (saved.score != null) ? saved.score : 0;
+          setDim(dim, ms, ms > 0 ? String(ms) : '—', saved.note || '待手动输入', { disabled: false });
+        } else {
+          setDim(dim, 0, '—', '无数据源', { disabled: false });
+        }
+      });
+      if (hint) {
+        hint.innerHTML = '<span style="color:#8ca06f">📊 外部日报：' + FTApp.escapeHtml(sym) + (extScore != null ? ' 综合分 ' + extScore.toFixed(1) : '') + ' · 供需/库存/宏观维度已按数据来源填充，基差/技术形态待手动输入</span>';
+      }
+    }
+
+    FTRender._currentFundState = { sym: sym, feishuName: feishuName, template: templateName, activeIndicators: activeIndicators, missingItems: missingItems, warehousePct: warehousePct };
+    this.updateFundTotal();
+    this.renderExternalFundSignal();
+  };
+
+  // ===== Task 4: 覆写 updateFundTotal =====
+  FTRender.updateFundTotal = function () {
+    var cfg = FUND_DIMENSION_CONFIG;
+    var st = FTRender._currentFundState || {};
+    var tot = el('fundTotalScore');
+    var bar = el('fundScoreBar');
+    var reasons = el('fundRefuseReasons');
+
+    // 无选择 / 无模板
+    if (!st.sym || !st.template) {
+      if (tot) { tot.textContent = '0 / 100'; tot.style.color = ''; }
+      if (bar) { bar.style.width = '0%'; bar.style.background = ''; }
+      if (reasons) reasons.innerHTML = '';
+      return;
+    }
+
+    // 轻量模板：不计算归一化分
+    if (st.template === 'lightweight') {
+      var wpct = st.warehousePct;
+      if (tot) { tot.textContent = (wpct != null) ? ('轻量模组 · 仓单分位 ' + wpct.toFixed(1)) : '轻量模组 · —'; tot.style.color = '#908e84'; }
+      if (bar) { bar.style.width = '0%'; bar.style.background = '#4a4a43'; }
+      if (reasons) reasons.innerHTML = '';
+      return;
+    }
+
+    // agri / metal：按模板权重归一化
+    var tpl = cfg.templates[st.template] || cfg.templates.agri;
+    var dimWeights = tpl.dims || {};
+    var totalWeight = 0, validWeight = 0, weightedSum = 0;
+    var missingDims = [];
+    cfg.dimensions.forEach(function (dim) {
+      var w = dimWeights[dim.key];
+      if (w == null) return; // 该模板不含此维度
+      totalWeight += w;
+      var sInp = el(dim.inputId);
+      var val = sInp ? (+sInp.value || 0) : 0;
+      var disabled = sInp ? sInp.disabled : false;
+      var hasActive = (st.activeIndicators || []).some(function (ind) { return mapIndicatorToDim(ind.name) === dim.key; });
+      var isValid = (val > 0 && !disabled) || hasActive;
+      if (isValid) {
+        validWeight += w;
+        weightedSum += val * w;
+      } else {
+        missingDims.push(dim);
+      }
+    });
+
+    var refuse = (totalWeight <= 0) || (validWeight <= 0) || (validWeight / totalWeight < cfg.refuseThreshold);
+    if (refuse) {
+      if (tot) { tot.textContent = '数据不足，拒绝出分'; tot.style.color = '#908e84'; }
+      if (bar) { bar.style.width = '0%'; bar.style.background = '#4a4a43'; }
+      if (reasons) {
+        var items = st.missingItems || [];
+        var parts = [];
+        items.forEach(function (it) { parts.push(FTApp.escapeHtml(it.name) + '：' + FTApp.escapeHtml(it.reason)); });
+        missingDims.forEach(function (d) { parts.push(FTApp.escapeHtml(d.name) + ' 无数据源'); });
+        reasons.innerHTML = '<div style="font-size:12px;color:#ef4444;margin-top:6px"><strong>缺失项：</strong>' + parts.join('；') + '</div>';
+      }
+    } else {
+      var score = (weightedSum / validWeight) * 10;  // 0-100
+      score = Math.round(score * 10) / 10;
+      if (tot) { tot.textContent = score.toFixed(1) + ' / 100'; tot.style.color = ''; }
+      if (bar) { bar.style.width = score + '%'; bar.style.background = ''; }
+      if (reasons) reasons.innerHTML = '';
+    }
+  };
+
+  // ===== Task 5: 覆写 renderExternalFundSignal =====
+  FTRender.renderExternalFundSignal = function () {
+    var panel = el('externalFundPanel');
+    var sel = el('fundSpeciesSelect');
+    if (!panel) return;
+    var sym = sel ? sel.value : '';
+    if (!sym) { panel.innerHTML = ''; return; }
+    var feed = window.__fundFeed;
+    if (!feed || !feed.records || !feed.records.length) {
+      panel.innerHTML = '<div class="info-box">外部数据加载中或不可用</div>';
+      return;
+    }
+    var record = feed.records[0];
+    var feishuName = (FTApp.PROJECT_TO_FEISHU_MAP && FTApp.PROJECT_TO_FEISHU_MAP[sym]) || sym;
+    var v = record.varieties && record.varieties[feishuName];
+
+    // 数据新鲜度角标：按 record.date 与今天差值分档
+    var freshnessHtml = '';
+    if (record.date) {
+      var d = new Date(record.date + 'T00:00:00');
+      var today = new Date();
+      var days = Math.floor((today - d) / 86400000);
+      if (!isNaN(days)) {
+        var color = days <= 3 ? '#908e84' : (days <= 7 ? '#fdd835' : '#ef4444');
+        var label = days <= 0 ? '实时' : ('滞后 ' + days + ' 天');
+        freshnessHtml = '<span id="fundFreshnessBadge" style="margin-left:8px;font-size:11px;color:' + color + '">' + label + '</span>';
+      }
+    }
+
+    if (!v) {
+      panel.innerHTML = '<div class="info-box">该品种暂无外部日报数据' + freshnessHtml + '</div>';
+      return;
+    }
+
+    // 档位徽章颜色映射
+    var levelColors = { '加仓': '#8ca06f', '底仓': '#d97757', '不动': '#908e84', '警惕拥挤': '#ef4444' };
+    var lvlColor = levelColors[v.level] || '#908e84';
+    // 变化箭头
+    var ch = v.change;
+    var changeHtml;
+    if (ch == null || ch === 0) {
+      changeHtml = '<span style="color:#908e84">→0.0</span>';
+    } else if (ch > 0) {
+      changeHtml = '<span style="color:#8ca06f">↑' + ch.toFixed(1) + '</span>';
+    } else {
+      changeHtml = '<span style="color:#ef4444">↓' + Math.abs(ch).toFixed(1) + '</span>';
+    }
+    // 品种小节摘录（支持〔轻量〕前缀，原正则不匹配轻量标题）
+    var excerpt = parseVarietySection(record.fullReport || '', feishuName);
+
+    var html = '<div style="font-family:Lora,Georgia,serif;color:#d8d6cd;font-size:14px;margin-bottom:8px">外部基本面信号（每日日报 · ' +
+      FTApp.escapeHtml(record.date || '') + ' ' + FTApp.escapeHtml(record.weekday || '') + '）' + freshnessHtml + '</div>';
+    html += '<div style="margin-bottom:6px">' +
+      '<span class="level-badge" style="display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;background:' + lvlColor + '22;color:' + lvlColor + ';border:1px solid ' + lvlColor + '">' + FTApp.escapeHtml(v.level || '') + '</span> ' +
+      '<span style="margin-left:10px;font-family:\'Geist Mono\',monospace;color:#faf9f5">分数 ' + (v.score != null ? v.score.toFixed(1) : '--') + '</span> ' +
+      '<span style="margin-left:10px;font-family:\'Geist Mono\',monospace">' + changeHtml + '</span>' +
+      '</div>';
+    if (record.summary) {
+      html += '<div style="font-size:12px;color:#b7b5a9;margin-bottom:6px">今日概况：' + FTApp.escapeHtml(record.summary) + '</div>';
+    }
+    // anomalyAlert 去重：按指标名（取 ":" 或空格前的部分）去重，重复条目只渲染一次
+    if (record.anomalyAlert && record.anomalyAlert !== '无') {
+      var parts = record.anomalyAlert.split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+      var seen = {}, deduped = [];
+      parts.forEach(function (p) {
+        var key = p.split(/[:\s]/)[0];
+        if (!seen[key]) { seen[key] = true; deduped.push(p); }
+      });
+      if (deduped.length > 0) {
+        html += '<div class="panel-alert">⚠ ' + FTApp.escapeHtml(deduped.join('；')) + '</div>';
+      }
+    }
+    if (excerpt) {
+      html += '<pre style="white-space:pre-wrap;background:#262624;border:1px solid #3e3e38;border-radius:8px;padding:10px;font-size:11px;color:#b7b5a9;font-family:\'Geist Mono\',monospace;max-height:260px;overflow:auto;margin-top:6px">' + FTApp.escapeHtml(excerpt) + '</pre>';
+    }
+    panel.innerHTML = html;
+  };
+})();
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', async function() {
   // 每个初始化步骤独立 try-catch，避免单个失败中断整个初始化链
