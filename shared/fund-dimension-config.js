@@ -28,7 +28,9 @@
         note: ''
       },
       metal: {
-        dims: { macro: 1.0 },
+        // 五维均计入 totalWeight，使 grayOut 的四维参与"有效维度权重占比"分母；
+        // 仅宏观有效时 validWeight/totalWeight = 0.2 < refuseThreshold → 触发拒绝出分
+        dims: { macro: 0.2, supply: 0.2, inventory: 0.2, basis: 0.2, technical: 0.2 },
         note: '当前为宏观情绪分，非品种基本面',
         grayOut: ['supply', 'inventory', 'basis', 'technical']  // 标灰"无品种级数据源"
       },

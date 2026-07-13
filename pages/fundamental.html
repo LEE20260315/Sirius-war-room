@@ -370,34 +370,34 @@
         <tbody id="fundBody" class="divide-y divide-edge-faint">
           <tr>
             <td class="py-3 px-4 text-ink-secondary font-medium">供需格局</td>
-            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundSupply" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">0</span></td>
+            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundSupply" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
             <td class="py-3 px-4"><input type="text" id="fundSupplyNote" placeholder="供应过剩/紧缺，需求强弱" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
           </tr>
           <tr>
             <td class="py-3 px-4 text-ink-secondary font-medium">库存水平</td>
-            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundInventory" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">0</span></td>
+            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundInventory" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
             <td class="py-3 px-4"><input type="text" id="fundInventoryNote" placeholder="交易所库存/社会库存趋势" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
           </tr>
           <tr>
             <td class="py-3 px-4 text-ink-secondary font-medium">基差结构</td>
-            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundBasis" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">0</span></td>
+            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundBasis" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
             <td class="py-3 px-4"><input type="text" id="fundBasisNote" placeholder="近远月价差，现货升贴水" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
           </tr>
           <tr>
             <td class="py-3 px-4 text-ink-secondary font-medium">宏观环境</td>
-            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundMacro" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">0</span></td>
+            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundMacro" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
             <td class="py-3 px-4"><input type="text" id="fundMacroNote" placeholder="政策/汇率/经济周期" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
           </tr>
           <tr>
             <td class="py-3 px-4 text-ink-secondary font-medium">技术形态</td>
-            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundTechnical" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">0</span></td>
+            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundTechnical" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
             <td class="py-3 px-4"><input type="text" id="fundTechnicalNote" placeholder="趋势/支撑阻力/成交量" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
           </tr>
         </tbody>
         <tfoot>
           <tr class="bg-surface-hover">
             <td class="py-3 px-4 text-ink font-semibold">综合评分</td>
-            <td class="py-3 px-4 font-mono text-xl font-semibold text-brand-500" id="fundTotalScore">0 / 50</td>
+            <td class="py-3 px-4 font-mono text-xl font-semibold text-brand-500" id="fundTotalScore">— / 100</td>
             <td class="py-3 px-4">
               <div class="progress-bar" style="height:8px">
                 <div id="fundScoreBar" class="progress-fill" style="width:0%"></div>
@@ -539,6 +539,8 @@
 
     if (!sym) {
       var h0 = el('fundHint'); if (h0) h0.innerHTML = '';
+      // 空状态：五维显示"—"，消除 0 分旧刻度
+      dims.forEach(function (dim) { setDim(dim, 0, '—', '', { disabled: false }); });
       FTRender._currentFundState = { sym: '', feishuName: '', template: null, activeIndicators: [], missingItems: [], warehousePct: null };
       this.updateFundTotal();
       this.renderExternalFundSignal();
@@ -632,7 +634,7 @@
 
     // 无选择 / 无模板
     if (!st.sym || !st.template) {
-      if (tot) { tot.textContent = '0 / 100'; tot.style.color = ''; }
+      if (tot) { tot.textContent = '— / 100'; tot.style.color = ''; }
       if (bar) { bar.style.width = '0%'; bar.style.background = ''; }
       if (reasons) reasons.innerHTML = '';
       return;
@@ -671,7 +673,17 @@
 
     var refuse = (totalWeight <= 0) || (validWeight <= 0) || (validWeight / totalWeight < cfg.refuseThreshold);
     if (refuse) {
-      if (tot) { tot.textContent = '数据不足，拒绝出分'; tot.style.color = '#908e84'; }
+      // 贵金属等仅宏观有效模板：附上宏观情绪分，明示非品种基本面
+      var refuseText = '数据不足·拒绝出分';
+      if (st.template === 'metal') {
+        var macroInp = el('fundMacro');
+        // 优先取维度 span 文本（保留小数；range input 默认 step=1 会把 7.4 截成 7）
+        var macroSpan = macroInp && macroInp.nextElementSibling ? macroInp.nextElementSibling.textContent : '';
+        var mv = parseFloat(macroSpan);
+        if (!(mv > 0)) mv = macroInp ? (+macroInp.value || 0) : 0;
+        if (mv > 0) refuseText = '数据不足·拒绝出分（仅宏观情绪分 ' + mv.toFixed(1) + '，不代表品种基本面）';
+      }
+      if (tot) { tot.textContent = refuseText; tot.style.color = '#908e84'; }
       if (bar) { bar.style.width = '0%'; bar.style.background = '#4a4a43'; }
       if (reasons) {
         var items = st.missingItems || [];
