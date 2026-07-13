@@ -66,8 +66,19 @@
   }
 
   // 分位%单元格：数值 + mini-bar（颜色：≤25绿/≤50黄/≤75橙/>75红）
-  function renderPercentileCell(pct) {
-    if (pct == null || pct === 0) return '<span class="text-ink-muted">--</span>';
+  // symbol 参数用于区分"价格为0（行情未拉到）"与"price-history.json 未收录（暂无历史）"
+  function renderPercentileCell(pct, symbol) {
+    if (pct == null || pct === 0) {
+      // 进一步区分：若 priceHistory 已加载但本品种无记录 → "暂无历史"
+      if (symbol && FTApp.priceHistory) {
+        var ph = typeof FTApp.priceHistory === 'function' ? FTApp.priceHistory() : FTApp.priceHistory;
+        if (ph && ph.records) {
+          var rec = ph.records.find(function (r) { return r.symbol === symbol; });
+          if (!rec) return '<span class="text-xs text-ink-faint italic">暂无历史</span>';
+        }
+      }
+      return '<span class="text-ink-muted">--</span>';
+    }
     var color = pct <= 25 ? '#8ca06f' : (pct <= 50 ? '#d4b656' : (pct <= 75 ? '#e08d6f' : '#ef4444'));
     return '<div style="display:flex;align-items:center;gap:4px">' +
       '<span class="font-mono text-xs" style="color:' + color + ';min-width:24px">' + pct + '</span>' +
@@ -96,17 +107,24 @@
   }
 
   // 成本线输入框：costLine=0 时自动回填参考值，灰色标注"参考"
+  // 既无手动值也无参考值 → 渲染可点击"+设置成本线"占位
   function renderCostInput(c) {
     var val = c.costLine || 0;
     var isRef = false;
+    var ref = FTApp.getCostReference ? FTApp.getCostReference(c.symbol) : null;
     if (val === 0) {
-      var ref = FTApp.getCostReference ? FTApp.getCostReference(c.symbol) : null;
       if (ref && ref.costDomestic > 0) { val = ref.costDomestic; isRef = true; }
       else if (ref && ref.costImport > 0) { val = ref.costImport; isRef = true; }
     }
-    var style = isRef ? 'width:84px;color:#908e84' : 'width:84px';
-    var badge = isRef ? ' <span class="text-xs" style="color:#908e84" title="参考值">参</span>' : '';
-    return '<input type="number" value="' + val + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="cost-input ' + CELL_INPUT + '" style="' + style + '">' + badge;
+    if (val > 0) {
+      var style = isRef ? 'width:84px;color:#908e84' : 'width:84px';
+      var badge = isRef ? ' <span class="text-xs" style="color:#908e84" title="参考值">参</span>' : '';
+      return '<input type="number" value="' + val + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="cost-input ' + CELL_INPUT + '" style="' + style + '">' + badge;
+    }
+    // 既无手动也无参考 → 可点击占位
+    return '<a href="javascript:void(0)" onclick="FTRender.editCostLine(\'' + FTApp.escapeHtml(c.symbol) + '\')" ' +
+      'class="text-xs text-brand-600 hover:text-brand-500 hover:underline" ' +
+      'style="border:1px dashed #d97757;border-radius:4px;padding:2px 8px;display:inline-block">+ 设置成本线</a>';
   }
 
   // 获取有效成本（含自动回填的参考值）
@@ -128,32 +146,46 @@
       if (!body) return;
       var pool = FTApp.state.pool || [];
       if (!pool.length) {
-        body.innerHTML = '<tr><td colspan="11" class="empty-state">观察池为空，点击"添加品种"开始</td></tr>';
+        body.innerHTML = '<tr><td colspan="12" class="empty-state">观察池为空，点击"添加品种"开始</td></tr>';
         ensureContractList();
         return;
       }
-      // 按板块分类顺序排序
-      var order = FTApp.CATEGORY_ORDER || [];
+      // 按国内四大期货交易所分组（CFFEX 归末尾）
+      var EXCHANGE_ORDER = ['SHFE', 'DCE', 'CZCE', 'GFEX', 'CFFEX'];
+      var EXCHANGE_TITLE = {
+        SHFE: '上海期货交易所（SHFE）',
+        DCE:  '大连商品交易所（DCE）',
+        CZCE: '郑州商品交易所（CZCE）',
+        GFEX: '广州期货交易所（GFEX）',
+        CFFEX:'中国金融期货交易所（CFFEX）'
+      };
       var sorted = pool.slice().sort(function (a, b) {
-        var ia = order.indexOf(a.category), ib = order.indexOf(b.category);
+        var ia = EXCHANGE_ORDER.indexOf(a.exchange), ib = EXCHANGE_ORDER.indexOf(b.exchange);
         return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
       });
       var html = '';
-      var lastCat = null;
+      var lastEx = null;
       sorted.forEach(function (c) {
-        if (c.category !== lastCat) {
-          html += '<tr class="bg-surface-dim"><td colspan="11" class="py-2 px-3 font-serif text-xs text-ink-muted uppercase tracking-wider">' +
-            FTApp.escapeHtml(c.category || '其他') + '</td></tr>';
-          lastCat = c.category;
+        if (c.exchange !== lastEx) {
+          var title = EXCHANGE_TITLE[c.exchange] || '其他';
+          html += '<tr class="bg-surface-dim"><td colspan="12" class="py-2 px-3 font-serif text-xs text-ink-muted uppercase tracking-wider">' +
+            FTApp.escapeHtml(title) + '</td></tr>';
+          lastEx = c.exchange;
         }
         var priceTxt = (c.price && c.price > 0) ? c.price.toFixed(2) : '--';
+        // 层级标签：核心=橙底，观察=灰底
+        var tier = c.tier || (FTApp.getVarietyTier ? FTApp.getVarietyTier(c.symbol) : '观察');
+        var tierBadge = tier === '核心'
+          ? '<span class="px-2 py-0.5 rounded text-xs font-medium" style="background:#d9775722;color:#e08d6f;border:1px solid #d97757">核心</span>'
+          : '<span class="px-2 py-0.5 rounded text-xs font-medium" style="background:#3a3a38;color:#908e84;border:1px solid #4a4a43">观察</span>';
         html += '<tr>' +
           '<td class="py-2 px-3 text-ink">' + FTApp.escapeHtml(c.symbol) + '</td>' +
+          '<td class="py-2 px-3">' + tierBadge + '</td>' +
           '<td class="py-2 px-3"><input list="contractList" value="' + FTApp.escapeHtml(c.contractCode || '') + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="contract-input ' + CELL_INPUT + '" style="width:96px"></td>' +
           '<td class="py-2 px-3"><input type="number" value="' + (c.multiplier || 0) + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="mult-input ' + CELL_INPUT + '" style="width:72px"></td>' +
           '<td class="py-2 px-3"><input type="number" step="0.01" value="' + (c.marginRate || 0) + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="margin-input ' + CELL_INPUT + '" style="width:72px"></td>' +
           '<td class="py-2 px-3 font-mono text-ink-secondary">' + priceTxt + '</td>' +
-          '<td class="py-2 px-3">' + renderPercentileCell(c.percentile) + '</td>' +
+          '<td class="py-2 px-3">' + renderPercentileCell(c.percentile, c.symbol) + '</td>' +
           '<td class="py-2 px-3">' + renderCostInput(c) + '</td>' +
           '<td class="py-2 px-3">' + renderDiffCell(c.price, getEffectiveCost(c)) + '</td>' +
           '<td class="py-2 px-3">' + renderDiffPctCell(c.price, getEffectiveCost(c)) + '</td>' +
@@ -163,6 +195,19 @@
       });
       body.innerHTML = html;
       ensureContractList();
+    },
+
+    // ============ 1.5 成本线就地录入（占位符点击触发） ============
+    editCostLine: function (symbol) {
+      var c = FTApp.state.pool.find(function (x) { return x.symbol === symbol; });
+      if (!c) return;
+      var input = window.prompt('设置 ' + symbol + ' 的成本线（元/吨或元/克，>0）：', c.costLine || '');
+      if (input === null) return;
+      var v = parseFloat(input);
+      if (isNaN(v) || v <= 0) { FTApp.showToast('请输入大于 0 的数字'); return; }
+      c.costLine = v;
+      FTApp.saveState();
+      this.renderPool();
     },
 
     // ============ 2. addPoolRow：历史按钮别名，转发到品种选择器 ============
@@ -276,7 +321,8 @@
           entry = {
             symbol: meta.symbol, contractCode: cc.toUpperCase(), multiplier: meta.multiplier,
             marginRate: meta.marginRate, price: 0, percentile: 0, costLine: 0, status: 'bottom',
-            category: meta.category, exchange: meta.exchange
+            category: meta.category, exchange: meta.exchange,
+            tier: FTApp.getVarietyTier ? FTApp.getVarietyTier(meta.symbol) : '观察'
           };
           if (vr.level === 'warn') FTApp.showToast(vr.warning);
         }
@@ -287,7 +333,8 @@
         if (!vr2.valid) { FTApp.showToast(vr2.warning); return; }
         entry = {
           symbol: customName, contractCode: customContract.toUpperCase(), multiplier: 10, marginRate: 0.08,
-          price: 0, percentile: 0, costLine: 0, status: 'bottom', category: '能源化工', exchange: ''
+          price: 0, percentile: 0, costLine: 0, status: 'bottom', category: '能源化工', exchange: '',
+          tier: FTApp.getVarietyTier ? FTApp.getVarietyTier(customName) : '观察'
         };
         if (vr2.level === 'warn') FTApp.showToast(vr2.warning);
       } else {

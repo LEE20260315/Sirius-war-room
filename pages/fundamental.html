@@ -356,6 +356,8 @@
   </div>
   <!-- 评分提示区（显示外部数据状态/无数据兜底提示） -->
   <div id="fundHint" class="mb-3 text-xs" style="min-height:18px"></div>
+  <!-- 位置定性小结区（基于分位%/COT/基差三数据源翻译为可决策一句话） -->
+  <div id="fundPositionSummary" class="mb-3 p-3 rounded-sm border border-edge-subtle bg-surface-dim" style="min-height:48px"></div>
   <!-- 5-Dimension Scoring Table -->
   <div class="bg-surface rounded-lg border border-edge-subtle shadow-sm overflow-hidden mb-4">
     <div class="overflow-x-auto">
@@ -458,6 +460,19 @@
     return out;
   }
 
+  // 解析 COT 持仓拥挤度分位：从日报小节中匹配 "COT_xxx_NET_LONG  数字  ..." 行
+  // 用于位置定性的"筹码位置"维度；找不到返回 null
+  function parseCotPercentile(section) {
+    if (!section) return null;
+    var re = /^\s*COT_[A-Z_]*NET_LONG\s+([\d.]+)/;
+    var lines = section.split(/\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var m = lines[i].match(re);
+      if (m) return parseFloat(m[1]);
+    }
+    return null;
+  }
+
   // 解析缺失分项（按指标名去重，日报中 OIL_WTI 常被重复列出）
   function parseMissingItems(section) {
     if (!section) return [];
@@ -525,6 +540,95 @@
     }
   }
 
+  // ===== Task 2.5: 位置定性小结（基于分位%/COT/基差三数据源翻译为可决策一句话） =====
+  function renderPositionSummary(symbol, template) {
+    var box = el('fundPositionSummary');
+    if (!box) return;
+    // 观察层品种：显示"仅行情观察未纳入评分"
+    if (template === 'observe' || (symbol && FTApp.getVarietyTier && FTApp.getVarietyTier(symbol) === '观察')) {
+      box.innerHTML = '<div class="text-xs text-ink-muted">📋 <span class="font-medium text-ink-secondary">位置定性：</span>仅行情观察，未纳入基本面评分</div>';
+      return;
+    }
+    if (!symbol) { box.innerHTML = ''; return; }
+
+    // 1. 估值位置：取分位%（从 FTApp.state.pool 中查）
+    var poolEntry = FTApp.state.pool.find(function (c) { return c.symbol === symbol; });
+    var pct = poolEntry ? poolEntry.percentile : null;
+    var valuationText, valuationTag;
+    if (pct == null || pct === 0) {
+      valuationText = '估值数据不足'; valuationTag = 'muted';
+    } else if (pct <= 25) {
+      valuationText = '估值低位（分位 ' + pct + '%，赔率好）'; valuationTag = 'good';
+    } else if (pct <= 75) {
+      valuationText = '估值中性（分位 ' + pct + '%）'; valuationTag = 'neutral';
+    } else {
+      valuationText = '估值高位（分位 ' + pct + '%，赔率差）'; valuationTag = 'bad';
+    }
+
+    // 2. 筹码位置：解析日报 fullReport 中的 COT_xxx_NET_LONG 分位
+    var feed = window.__fundFeed;
+    var record = (feed && feed.records && feed.records.length) ? feed.records[0] : null;
+    var feishuName = (FTApp.PROJECT_TO_FEISHU_MAP && FTApp.PROJECT_TO_FEISHU_MAP[symbol]) || symbol;
+    var section = (record && record.fullReport) ? parseVarietySection(record.fullReport, feishuName) : '';
+    var cotPct = parseCotPercentile(section);
+    var positionText, positionTag;
+    if (cotPct == null) {
+      positionText = '筹码数据不足'; positionTag = 'muted';
+    } else if (cotPct >= 85) {
+      positionText = '筹码拥挤（COT ' + cotPct.toFixed(0) + '%，反噬风险）'; positionTag = 'bad';
+    } else if (cotPct <= 30) {
+      positionText = '筹码不拥挤（COT ' + cotPct.toFixed(0) + '%）'; positionTag = 'good';
+    } else {
+      positionText = '筹码中性（COT ' + cotPct.toFixed(0) + '%）'; positionTag = 'neutral';
+    }
+
+    // 3. 现货强弱：basis 维度评分（已由 loadFundamental 填入 fundBasis input.value，范围 0-10）
+    //    >=6 视为现货偏强；<=4 视为现货偏弱；0/缺失 → "数据不足"
+    var basisDim = el('fundBasis');
+    var basisScore = basisDim ? parseFloat(basisDim.value || '0') : 0;
+    var basisNoteEl = el('fundBasisNote');
+    var basisNoteTxt = basisNoteEl ? basisNoteEl.value : '';
+    var basisText, basisTag;
+    if (!basisScore || basisScore === 0) {
+      basisText = '现货数据不足'; basisTag = 'muted';
+    } else if (basisScore >= 6) {
+      basisText = '现货偏强（基差维度 ' + basisScore + '）'; basisTag = 'good';
+    } else if (basisScore <= 4) {
+      basisText = '现货偏弱（基差维度 ' + basisScore + '）'; basisTag = 'bad';
+    } else {
+      basisText = '现货中性（基差维度 ' + basisScore + '）'; basisTag = 'neutral';
+    }
+
+    // 4. 综合结论
+    var tags = [valuationTag, positionTag, basisTag];
+    var goodCnt = tags.filter(function (t) { return t === 'good'; }).length;
+    var badCnt = tags.filter(function (t) { return t === 'bad'; }).length;
+    var mutedCnt = tags.filter(function (t) { return t === 'muted'; }).length;
+    var conclusion, conclusionColor;
+    if (mutedCnt >= 2) {
+      conclusion = '数据不足，观望'; conclusionColor = '#908e84';
+    } else if (goodCnt >= 2 && badCnt === 0) {
+      conclusion = '赔率占优，可关注'; conclusionColor = '#8ca06f';
+    } else if (badCnt >= 2) {
+      conclusion = '风险升高，观望'; conclusionColor = '#ef4444';
+    } else {
+      conclusion = '中性，观望'; conclusionColor = '#d4b656';
+    }
+
+    // 5. 渲染：三段 + 箭头 + 结论
+    var tagColor = { good: '#8ca06f', neutral: '#d4b656', bad: '#ef4444', muted: '#908e84' };
+    function span(tag, txt) { return '<span style="color:' + tagColor[tag] + '">' + txt + '</span>'; }
+    box.innerHTML =
+      '<div class="text-xs">' +
+        '<span class="font-medium text-ink-secondary">位置定性：</span>' +
+        span(valuationTag, valuationText) + ' · ' +
+        span(positionTag, positionText) + ' · ' +
+        span(basisTag, basisText) +
+        ' <span class="text-ink-muted">→</span> ' +
+        '<span class="font-medium" style="color:' + conclusionColor + '">' + conclusion + '</span>' +
+      '</div>';
+  }
+
   // ===== Task 3: 覆写 loadFundamental =====
   FTRender.loadFundamental = function () {
     var sel = el('fundSpeciesSelect');
@@ -544,6 +648,19 @@
       FTRender._currentFundState = { sym: '', feishuName: '', template: null, activeIndicators: [], missingItems: [], warehousePct: null };
       this.updateFundTotal();
       this.renderExternalFundSignal();
+      renderPositionSummary('');
+      return;
+    }
+
+    // 观察层短路：仅行情观察，不进基本面评分
+    if (FTApp.getVarietyTier && FTApp.getVarietyTier(sym) === '观察') {
+      dims.forEach(function (dim) { setDim(dim, 0, '—', '仅行情观察，未纳入基本面评分', { disabled: true, gray: true }); });
+      var hintObs = el('fundHint');
+      if (hintObs) hintObs.innerHTML = '<span style="color:#908e84">📋 ' + FTApp.escapeHtml(sym) + ' 为观察层品种，仅跟踪行情与分位%，不参与五维基本面评分</span>';
+      FTRender._currentFundState = { sym: sym, feishuName: sym, template: 'observe', activeIndicators: [], missingItems: [], warehousePct: null };
+      this.updateFundTotal();
+      this.renderExternalFundSignal();
+      renderPositionSummary(sym, 'observe');
       return;
     }
 
@@ -565,6 +682,7 @@
       FTRender._currentFundState = { sym: sym, feishuName: feishuName, template: templateName, activeIndicators: activeIndicators, missingItems: missingItems, warehousePct: warehousePct };
       this.updateFundTotal();
       this.renderExternalFundSignal();
+      renderPositionSummary(sym, templateName);
       return;
     }
 
@@ -622,6 +740,7 @@
     FTRender._currentFundState = { sym: sym, feishuName: feishuName, template: templateName, activeIndicators: activeIndicators, missingItems: missingItems, warehousePct: warehousePct };
     this.updateFundTotal();
     this.renderExternalFundSignal();
+    renderPositionSummary(sym, templateName);
   };
 
   // ===== Task 4: 覆写 updateFundTotal =====
@@ -644,6 +763,14 @@
     if (st.template === 'lightweight') {
       var wpct = st.warehousePct;
       if (tot) { tot.textContent = (wpct != null) ? ('轻量模组 · 仓单分位 ' + wpct.toFixed(1)) : '轻量模组 · —'; tot.style.color = '#908e84'; }
+      if (bar) { bar.style.width = '0%'; bar.style.background = '#4a4a43'; }
+      if (reasons) reasons.innerHTML = '';
+      return;
+    }
+
+    // 观察层模板：不参与五维评分
+    if (st.template === 'observe') {
+      if (tot) { tot.textContent = '观察层 · 未纳入评分'; tot.style.color = '#908e84'; }
       if (bar) { bar.style.width = '0%'; bar.style.background = '#4a4a43'; }
       if (reasons) reasons.innerHTML = '';
       return;

@@ -21,6 +21,8 @@
     {"symbol":"铝","costDomestic":17500,"costImport":0,"unit":"元/吨","updated":"2026-07-09","source":"电解铝完全成本","note":"氧化铝+电力(占40%)+预焙阳极，电价是核心变量"},
     {"symbol":"PVC","costDomestic":5600,"costImport":0,"unit":"元/吨","updated":"2026-07-09","source":"电石法/乙烯法","note":"电石法5500-5800(占80%)，乙烯法随原油波动"},
     {"symbol":"碳酸锂","costDomestic":75000,"costImport":0,"unit":"元/吨","updated":"2026-07-09","source":"盐湖/矿石提锂","note":"盐湖提锂40000-60000，矿石提锂70000-90000，电池级"},
-    {"symbol":"工业硅","costDomestic":10500,"costImport":0,"unit":"元/吨","updated":"2026-07-09","source":"硅业分会","note":"新疆电价低成本低至9000，云南四川丰水期10000-11000"}
+    {"symbol":"工业硅","costDomestic":10500,"costImport":0,"unit":"元/吨","updated":"2026-07-09","source":"硅业分会","note":"新疆电价低成本低至9000，云南四川丰水期10000-11000"},
+    {"symbol":"豆油","costDomestic":7800,"costImport":8200,"unit":"元/吨","updated":"2026-07-13","source":"大豆压榨成本","note":"豆油=大豆×0.18+加工费，随美豆价格波动"},
+    {"symbol":"菜油","costDomestic":8500,"costImport":9000,"unit":"元/吨","updated":"2026-07-13","source":"菜籽压榨成本","note":"国产菜籽压榨+进口菜油到岸"}
   ]
 }

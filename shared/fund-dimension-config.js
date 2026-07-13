@@ -20,7 +20,8 @@
     varietyTemplates: {
       '棕榈油': 'agri', '天然橡胶': 'agri', '白糖': 'agri', '橡胶': 'agri',
       '黄金': 'metal', '白银': 'metal', '铜': 'metal',
-      '碳酸锂': 'lightweight', '螺纹钢': 'lightweight', '玻璃': 'lightweight', '多晶硅': 'lightweight'
+      '碳酸锂': 'agri', '多晶硅': 'agri',
+      '螺纹钢': 'lightweight', '玻璃': 'lightweight'
     },
     templates: {
       agri: {

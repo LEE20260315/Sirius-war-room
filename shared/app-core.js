@@ -3,7 +3,7 @@
 // auto-refresh, theme toggle, backup/import/export, and init function.
 
 // ============ VERSION ============
-const APP_VERSION = '2026.07.11-v9';
+const APP_VERSION = '2026.07.13-v10';
 
 // ============ DATA STORE ============
 // 交易所分类品种主数据：覆盖国内五大期货交易所
@@ -36,6 +36,7 @@ const EXCHANGE_VARIETIES = [
   // 郑州商品交易所 (CZCE) — 3位数字格式：年份末位+月份（SR609=2026年9月）
   {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'白糖',code:'SR',multiplier:10,marginRate:0.08,defaultContract:'SR609'},
   {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'棉花',code:'CF',multiplier:5,marginRate:0.08,defaultContract:'CF609'},
+  {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'菜油',code:'OI',multiplier:10,marginRate:0.08,defaultContract:'OI609'},
   {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'农产品',symbol:'苹果',code:'AP',multiplier:10,marginRate:0.10,defaultContract:'AP610'},
   {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'甲醇',code:'MA',multiplier:10,marginRate:0.08,defaultContract:'MA609'},
   {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'玻璃',code:'FG',multiplier:20,marginRate:0.08,defaultContract:'FG609'},
@@ -55,6 +56,12 @@ const EXCHANGE_VARIETIES = [
 
 // 板块分类显示顺序
 const CATEGORY_ORDER = ['农产品','黑色系','有色金属','贵金属','能源化工','新能源','股指'];
+
+// 核心层品种清单（走完整五维打分）；其余品种为观察层（仅行情+分位%）
+const CORE_VARIETIES = ['棕榈油','白糖','棉花','铜','黄金','白银','天然橡胶','多晶硅','碳酸锂'];
+function getVarietyTier(symbol) {
+  return CORE_VARIETIES.indexOf(symbol) >= 0 ? '核心' : '观察';
+}
 
 // 飞书日报品种名 → 项目品种符号归一化（双向）
 // 飞书表用"橡胶"/"黄金"/"白银"，项目用"天然橡胶"/"黄金"/"白银"
@@ -123,14 +130,17 @@ function validateContract(contractCode, varietySymbol) {
 
 // 预置观察池：8 个品种，合约为当前主力月份（2026-07，动态维护）
 const DEFAULT_COMMODITIES = [
-  {symbol:'棕榈油',contractCode:'P2609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'DCE'},
-  {symbol:'白糖',contractCode:'SR609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE'},
-  {symbol:'棉花',contractCode:'CF609',multiplier:5,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE'},
-  {symbol:'天然橡胶',contractCode:'RU2609',multiplier:10,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'能源化工',exchange:'SHFE'},
-  {symbol:'铜',contractCode:'CU2609',multiplier:5,marginRate:0.09,price:0,percentile:0,costLine:0,status:'bottom',category:'有色金属',exchange:'SHFE'},
-  {symbol:'黄金',contractCode:'AU2608',multiplier:1000,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE'},
-  {symbol:'白银',contractCode:'AG2608',multiplier:15,marginRate:0.10,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE'},
-  {symbol:'多晶硅',contractCode:'PS2609',multiplier:3,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX'}
+  {symbol:'棕榈油',contractCode:'P2609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'DCE',tier:'核心'},
+  {symbol:'白糖',contractCode:'SR609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE',tier:'核心'},
+  {symbol:'棉花',contractCode:'CF609',multiplier:5,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE',tier:'核心'},
+  {symbol:'天然橡胶',contractCode:'RU2609',multiplier:10,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'能源化工',exchange:'SHFE',tier:'核心'},
+  {symbol:'铜',contractCode:'CU2609',multiplier:5,marginRate:0.09,price:0,percentile:0,costLine:0,status:'bottom',category:'有色金属',exchange:'SHFE',tier:'核心'},
+  {symbol:'黄金',contractCode:'AU2608',multiplier:1000,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE',tier:'核心'},
+  {symbol:'白银',contractCode:'AG2608',multiplier:15,marginRate:0.10,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE',tier:'核心'},
+  {symbol:'多晶硅',contractCode:'PS2609',multiplier:3,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX',tier:'核心'},
+  {symbol:'碳酸锂',contractCode:'LC2611',multiplier:1,marginRate:0.15,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX',tier:'核心'},
+  {symbol:'豆油',contractCode:'Y2609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'DCE',tier:'观察'},
+  {symbol:'菜油',contractCode:'OI609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE',tier:'观察'}
 ];
 
 const FUND_DIMENSIONS = [
@@ -415,7 +425,7 @@ const EASTMONEY_SYMBOL_MAP = {
   'PVC':'114.vm', '聚丙烯PP':'114.ppm', 'PP':'114.ppm', '塑料LLDPE':'114.lm', '乙二醇':'114.egm',
   // CZCE
   '甲醇':'115.mam', '玻璃':'115.fgm', '白糖':'115.srm', '纯碱':'115.sam',
-  '烧碱':'115.shm', '尿素':'115.urm', '棉花':'115.cfm', '苹果':'115.apm', 'PTA':'115.tam',
+  '烧碱':'115.shm', '尿素':'115.urm', '棉花':'115.cfm', '苹果':'115.apm', 'PTA':'115.tam', '菜油':'115.oim',
   // GFEX
   '多晶硅':'8.psm', '工业硅':'8.sim', '碳酸锂':'8.lcm'
 };
@@ -431,7 +441,7 @@ const SINA_SYMBOL_MAP = {
   'PVC':'V0', '聚丙烯PP':'PP0', 'PP':'PP0', '塑料LLDPE':'L0', '乙二醇':'EG0',
   // CZCE
   '甲醇':'MA0', '玻璃':'FG0', '白糖':'SR0', '纯碱':'SA0',
-  '烧碱':'SH0', '尿素':'UR0', '棉花':'CF0', '苹果':'AP0', 'PTA':'TA0',
+  '烧碱':'SH0', '尿素':'UR0', '棉花':'CF0', '苹果':'AP0', 'PTA':'TA0', '菜油':'OI0',
   // GFEX
   '多晶硅':'PS0', '工业硅':'SI0', '碳酸锂':'LC0'
 };
@@ -868,7 +878,7 @@ let costReference = null; // {records: [...], updated, source}
 
 async function loadPriceHistory() {
   try {
-    const resp = await fetch('shared/price-history.json');
+    const resp = await fetch('../shared/price-history.json');
     if (!resp.ok) throw new Error('http ' + resp.status);
     priceHistory = await resp.json();
     console.log('[FT] 历史价格区间加载成功:', priceHistory.records.length, '个品种');
@@ -880,7 +890,7 @@ async function loadPriceHistory() {
 
 async function loadCostReference() {
   try {
-    const resp = await fetch('shared/cost-reference.json');
+    const resp = await fetch('../shared/cost-reference.json');
     if (!resp.ok) throw new Error('http ' + resp.status);
     costReference = await resp.json();
     console.log('[FT] 成本参考加载成功:', costReference.records.length, '个品种');
@@ -1300,8 +1310,9 @@ window.FTApp = {
   // 常量
   FUND_DIMENSIONS, DEFAULT_COMMODITIES,
   EXCHANGE_VARIETIES, CATEGORY_ORDER,
+  CORE_VARIETIES,
   FEISHU_VARIETY_MAP, PROJECT_TO_FEISHU_MAP,
-  findVarietyMeta,
+  findVarietyMeta, getVarietyTier,
   // 百分位/成本参考
   computePercentile, getCostReference, loadPriceHistory, loadCostReference,
   ensurePercentileComputed, getEffectiveFundScore, getFundamentalComposite,

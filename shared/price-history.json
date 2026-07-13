@@ -25,6 +25,8 @@
     {"symbol":"沥青","low":3000,"high":4200,"avg":3600,"unit":"元/吨","updated":"2026-07-09","source":"SHFE主力连续"},
     {"symbol":"PVC","low":4500,"high":7000,"avg":5600,"unit":"元/吨","updated":"2026-07-09","source":"DCE主力连续"},
     {"symbol":"碳酸锂","low":55000,"high":180000,"avg":95000,"unit":"元/吨","updated":"2026-07-09","source":"GFEX主力连续"},
-    {"symbol":"工业硅","low":9000,"high":15000,"avg":11500,"unit":"元/吨","updated":"2026-07-09","source":"GFEX主力连续"}
+    {"symbol":"工业硅","low":9000,"high":15000,"avg":11500,"unit":"元/吨","updated":"2026-07-09","source":"GFEX主力连续"},
+    {"symbol":"豆油","low":7000,"high":11000,"avg":8200,"unit":"元/吨","updated":"2026-07-13","source":"DCE主力连续"},
+    {"symbol":"菜油","low":7500,"high":13000,"avg":9500,"unit":"元/吨","updated":"2026-07-13","source":"CZCE主力连续"}
   ]
 }
