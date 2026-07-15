@@ -159,18 +159,26 @@
         GFEX: '广州期货交易所（GFEX）',
         CFFEX:'中国金融期货交易所（CFFEX）'
       };
+      // 解析有效交易所：优先 c.exchange，缺失时按品种名查主数据兜底
+      // （旧版 localStorage 条目可能没存 exchange，需反查 EXCHANGE_VARIETIES 归位，避免落入"其他"组）
+      function resolveExchange(c) {
+        if (c.exchange && EXCHANGE_TITLE[c.exchange]) return c.exchange;
+        var meta = FTApp.findVarietyMeta ? FTApp.findVarietyMeta(c.symbol) : null;
+        return (meta && meta.exchange) ? meta.exchange : '';
+      }
       var sorted = pool.slice().sort(function (a, b) {
-        var ia = EXCHANGE_ORDER.indexOf(a.exchange), ib = EXCHANGE_ORDER.indexOf(b.exchange);
+        var ia = EXCHANGE_ORDER.indexOf(resolveExchange(a)), ib = EXCHANGE_ORDER.indexOf(resolveExchange(b));
         return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
       });
       var html = '';
       var lastEx = null;
       sorted.forEach(function (c) {
-        if (c.exchange !== lastEx) {
-          var title = EXCHANGE_TITLE[c.exchange] || '其他';
+        var ex = resolveExchange(c);
+        if (ex !== lastEx) {
+          var title = EXCHANGE_TITLE[ex] || '';
           html += '<tr class="bg-surface-dim"><td colspan="12" class="py-2 px-3 font-serif text-xs text-ink-muted uppercase tracking-wider">' +
             FTApp.escapeHtml(title) + '</td></tr>';
-          lastEx = c.exchange;
+          lastEx = ex;
         }
         var priceTxt = (c.price && c.price > 0) ? c.price.toFixed(2) : '--';
         // 层级标签：核心=橙底，观察=灰底

@@ -3,7 +3,7 @@
 // auto-refresh, theme toggle, backup/import/export, and init function.
 
 // ============ VERSION ============
-const APP_VERSION = '2026.07.13-v10';
+const APP_VERSION = '2026.07.15-v11';
 
 // ============ DATA STORE ============
 // 交易所分类品种主数据：覆盖国内五大期货交易所
@@ -183,6 +183,14 @@ function loadState() {
         // v9: 数据源默认升级为 auto（旧版默认 manual 导致行情不自动获取）
         // 用户如需 manual 可在设置页切回
         if (state.settings) state.settings.dataSource = 'auto';
+        // v11: 回填存量品种缺失的 exchange 字段（按品种名反查 EXCHANGE_VARIETIES 主数据）
+        // 根因：2026-07-13 分组功能上线前添加的观察层品种未存 exchange，导致分组落入"其他"组
+        (state.pool || []).forEach(function(c) {
+          if (!c.exchange) {
+            var m = findVarietyMeta(c.symbol);
+            if (m && m.exchange) c.exchange = m.exchange;
+          }
+        });
         state.version = APP_VERSION;
         saveState();
       }
