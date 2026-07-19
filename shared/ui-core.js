@@ -518,7 +518,7 @@
       var sym = sel.value;
       var get = function (id) { var i = el(id); return i ? (+i.value || 0) : 0; };
       var getn = function (id) { var i = el(id); return i ? i.value : ''; };
-      FTApp.getCurrentAccount().fundamentals[sym] = {
+      FTApp.state.accounts.sim.fundamentals[sym] = {
         supply:    { score: get('fundSupply'),    note: getn('fundSupplyNote') },
         inventory: { score: get('fundInventory'), note: getn('fundInventoryNote') },
         basis:     { score: get('fundBasis'),     note: getn('fundBasisNote') },

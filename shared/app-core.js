@@ -443,7 +443,7 @@ async function restoreFromGist() {
       if (!ok) { showToast('已取消恢复'); return false; }
     }
     Object.assign(state, restored);
-    if (!getCurrentAccount().priceSnapshots) getCurrentAccount().priceSnapshots = {};
+    if (!state.accounts.sim.priceSnapshots) state.accounts.sim.priceSnapshots = {};
     saveState();
     showToast('已从 GitHub Gist 恢复数据');
     if (window.FTRender) {
@@ -1512,12 +1512,20 @@ function init() {
   if (window.FTRender && window.FTRender.loadFundamental) window.FTRender.loadFundamental();
   if (window.FTRender && window.FTRender.renderTrades) window.FTRender.renderTrades();
   if (window.FTRender && window.FTRender.renderJournal) window.FTRender.renderJournal();
-  // 初始化两个账户的 equityHistory(若为空)
-  ['sim', 'real'].forEach(k => {
+  // 初始化 sim 账户的 equityHistory(若为空) — 模拟盘用 settings.initEquity 作为虚拟起始资金
+  // real 账户不自动注入:实盘起始权益应由 ledger 流水(入金记录)驱动,默认空数组(显示 0)
+  ['sim'].forEach(k => {
     if (state.accounts[k] && state.accounts[k].equityHistory.length === 0) {
       state.accounts[k].equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
     }
   });
+  // 一次性清理:若 real 账户的 equityHistory 只有一条 equity === initEquity 的记录(老版 bug 注入的),
+  // 且 real.ledger 为空(从未录入入金流水),则清空 — 让实盘权益真正由 ledger 驱动
+  if (state.accounts.real && state.accounts.real.equityHistory.length === 1
+      && state.accounts.real.equityHistory[0].equity === state.settings.initEquity
+      && (!state.accounts.real.ledger || state.accounts.real.ledger.length === 0)) {
+    state.accounts.real.equityHistory = [];
+  }
   saveState();
   initAutoRefresh();
   initAutoBackup();
