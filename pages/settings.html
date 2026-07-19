@@ -3,97 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>期货模拟盘 - 设置</title>
+    <title>Sirius 期货作战室 - 设置</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Lora:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style id="theme-vars">
-/* === Claude Design System - Colors & Type === */
-/* Font Families */
---font-display: 'Newsreader', Georgia, ui-serif, serif;
---font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;
---font-serif: 'Lora', Georgia, ui-serif, serif;
---font-mono: 'Geist Mono', ui-monospace, monospace;
-
-/* Brand Colors */
---color-brand-50: #3a2a22;
---color-brand-100: #4d3528;
---color-brand-200: #6b4533;
---color-brand-300: #8a5740;
---color-brand-400: #b0683f;
---color-brand-500: #d97757;
---color-brand-600: #e08d6f;
---color-brand-700: #e8a98f;
---color-brand-800: #f0c6b3;
---color-brand-900: #f8e3d8;
-
-/* Surface Colors */
---color-surface-base: #1b1b19;
---color-surface-dim: #262624;
---color-surface: #2c2c2b;
---color-surface-elevated: #30302e;
---color-surface-hover: #3e3e38;
---color-surface-muted: #4a4a43;
-
-/* Ink (Text) Colors */
---color-ink: #faf9f5;
---color-ink-secondary: #d8d6cd;
---color-ink-muted: #b7b5a9;
---color-ink-dim: #908e84;
---color-ink-faint: #6e6d68;
---color-ink-label: #46443b;
-
-/* Edge (Border) Colors */
---color-edge: #4a4a43;
---color-edge-subtle: #3e3e38;
---color-edge-faint: #343430;
---color-edge-divider: #2c2c2b;
---color-edge-primary: #908e84;
-
-/* Semantic Colors */
---color-success: #8ca06f;
---color-success-bg: #232a1c;
---color-success-border: #556640;
---color-error: #ef4444;
---color-error-bg: #3a1f1f;
---color-error-border: #93302f;
---color-warning: #fdd835;
-
-/* Chart Colors */
---color-chart-1: #b05730;
---color-chart-2: #9c87f5;
---color-chart-3: #1a1915;
---color-chart-4: #2f2b48;
---color-chart-5: #b4552d;
-
-/* Border Radius */
---radius-sm: 8px;
---radius-md: 12px;
---radius-lg: 16px;
---radius-xl: 20px;
---radius-2xl: 24px;
---radius-full: 9999px;
-
-/* Shadows */
---shadow-xs: 0 1px 3px 0 rgba(0,0,0,0.05);
---shadow-sm: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1);
---shadow-md: 0 1px 3px 0 rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.1);
---shadow-lg: 0 1px 3px 0 rgba(0,0,0,0.1), 0 4px 6px -1px rgba(0,0,0,0.1);
---shadow-xl: 0 1px 3px 0 rgba(0,0,0,0.1), 0 8px 10px -1px rgba(0,0,0,0.1);
-
-/* Legacy aliases for JS compatibility */
---bg: #1b1b19;
---bg2: #2c2c2b;
---bg3: #30302e;
---text: #faf9f5;
---text2: #b7b5a9;
---border: #4a4a43;
---accent: #d97757;
---green: #8ca06f;
---yellow: #fdd835;
---red: #ef4444;
-
-    </style>
+    <link rel="stylesheet" href="../shared/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
     <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
     <style type="text/tailwindcss">
@@ -178,44 +92,30 @@
     html.light ::-webkit-scrollbar-thumb { background: #ccc9c0; border-radius: 4px; }
   }
     </style>
-    <style>
-      .no-scrollbar::-webkit-scrollbar { display: none; }
-      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      [data-icon] {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        -webkit-mask-size: contain;
-        mask-size: contain;
-        -webkit-mask-repeat: no-repeat;
-        mask-repeat: no-repeat;
-        -webkit-mask-position: center;
-        mask-position: center;
-        background-color: currentColor;
-      }
-      /* Page enter transition - 消除切换闪烁 */
-      .page-enter { animation: pageEnter 0.3s cubic-bezier(0.4,0,0.2,1); }
-      @keyframes pageEnter {
-        from { opacity: 0; transform: translateY(8px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .page-enter { animation: none; }
-      }
-    </style>
 </head>
 <body class="bg-surface-base text-ink font-sans min-h-screen">
 <div id="toast" class="toast"></div>
 
 <header class="bg-surface-elevated border-b border-edge-divider px-5 py-3 flex items-center justify-between">
   <h1 class="font-display text-lg text-brand-500 font-medium tracking-tight">
-    小资金商品期货 <span class="text-ink-muted font-serif italic">模拟盘跟踪系统</span>
+    Sirius <span class="text-ink-muted font-serif italic">期货作战室</span>
   </h1>
   <div class="flex items-center gap-4 text-sm text-ink-muted">
     <span>起始: <span id="headerInitEquity" class="text-ink font-mono">15,000</span> | 目标: <span id="headerTarget" class="text-ink font-mono">1,000,000</span></span>
     <button id="themeBtn" onclick="FTApp.toggleTheme()" title="切换深色/浅色主题" class="flex items-center gap-1 text-ink-dim hover:text-ink text-xs transition-colors duration-300 px-2 py-1 rounded hover:bg-surface-hover"><span id="themeIcon" style="transition:transform 0.3s;display:inline-block">&#9790;</span><span id="themeLabel">深色</span></button>
     </div>
 </header>
+<div class="sync-bar bg-surface-elevated border-b border-edge px-4 py-1.5 text-xs flex items-center justify-between">
+  <span id="syncStatus" class="text-ink-muted"><span class="status-dot offline"></span>云同步: 未配置</span>
+  <div class="flex items-center gap-3">
+    <span class="text-ink-faint">账户:</span>
+    <div class="account-switcher inline-flex rounded-sm border border-edge overflow-hidden">
+      <button id="acctBtnSim" onclick="FTApp.switchAccount('sim')" class="px-3 py-0.5 text-xs bg-brand-500 text-brand-50 active">模拟盘</button>
+      <button id="acctBtnReal" onclick="FTApp.switchAccount('real')" class="px-3 py-0.5 text-xs bg-surface-base text-ink-muted">实盘</button>
+    </div>
+    <span id="accountBadge" class="text-ink-muted">模拟盘</span>
+  </div>
+</div>
 <div class="auto-refresh-bar bg-surface border-b border-edge-divider px-5 py-1.5 flex items-center justify-between flex-wrap:wrap gap:2 text-xs text-ink-muted">
   <div class="flex items-center gap-4 flex-wrap:wrap">
     <label class="flex items-center gap-1.5 cursor-pointer">
@@ -233,6 +133,7 @@
   <a href="fundamental.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">基本面</a>
   <a href="signal.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">信号引擎</a>
   <a href="trade.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">模拟交易</a>
+  <a href="real-trade.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">实盘录入</a>
   <a href="journal.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">交易日志</a>
   <a href="dashboard.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors text-ink-dim hover:text-ink-muted hover:bg-surface-hover">仪表盘</a>
   <a href="settings.html" class="px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors border-b-2 border-brand-500 text-brand-500">设置</a>
@@ -341,6 +242,27 @@
       </div>
       <div class="form-help mt-2">同步后将数据备份到私有 Gist，换电脑/浏览器填入 Token + 恢复即可</div>
     </div>
+    <!-- Sirius 云同步配置 -->
+    <div class="bg-surface rounded-lg border border-edge-subtle p-4">
+      <h3 class="font-serif text-sm text-brand-500 mb-4 pb-2 border-b border-edge-faint">Sirius 云同步配置</h3>
+      <p class="text-xs text-ink-muted mb-4">数据通过 Cloudflare Workers 代理保存到飞书多维表格,换浏览器不丢数据。配置详见 <a href="../docs/config-checklist.md" class="text-brand-500 underline">配置清单</a>。</p>
+      <div class="form-group">
+        <label>代理地址(Worker URL)</label>
+        <input type="text" id="cloudProxyUrl" placeholder="https://sirius-proxy.xxx.workers.dev">
+        <div class="form-help">Cloudflare Workers 部署后的 URL,不带尾部斜杠</div>
+      </div>
+      <div class="form-group">
+        <label>访问口令</label>
+        <input type="password" id="cloudAccessToken" placeholder="X-Sirius-Token">
+        <div class="form-help">与 Worker secret SIRIUS_ACCESS_TOKEN 完全一致,存 sessionStorage</div>
+      </div>
+      <div class="flex gap-3 mt-3">
+        <button type="button" class="bg-surface-elevated text-ink-secondary px-4 py-2 rounded-sm text-sm font-medium border border-edge-subtle hover:bg-surface-hover transition-colors" onclick="FTApp.testCloudSync()">测试连接</button>
+        <button type="button" class="bg-brand-500 text-brand-50 px-4 py-2 rounded-sm text-sm font-medium hover:bg-brand-600 transition-colors" onclick="FTApp.saveCloudSyncConfig()">保存配置</button>
+      </div>
+      <div id="cloudSyncTestResult" class="mt-3 text-sm"></div>
+      <div class="form-help mt-2">保存后将立即拉取飞书数据;断网时数据保存到本地,联网后自动补传</div>
+    </div>
     <input type="hidden" id="setApiUrl" value="">
   </div>
 
@@ -368,6 +290,7 @@
   </div>
 </main>
 <script src="../shared/app-core.js"></script>
+<script src="../shared/cloud-sync.js"></script>
 <script src="../shared/signal-engine.js"></script>
 <script src="../shared/trade-engine.js"></script>
 <script src="../shared/chart-engine.js"></script>
@@ -385,42 +308,5 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-    <style>
-.toast{position:fixed;top:20px;right:20px;background:#d97757;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:2000;display:none;animation:fadeIn .3s;font-family:Poppins,ui-sans-serif,system-ui,sans-serif}
-.toast.show{display:block}
-@keyframes fadeIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-.modal-overlay.show{display:flex}
-.modal{background:#30302e;border:1px solid #4a4a43;border-radius:12px;padding:20px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 10px -1px rgba(0,0,0,0.1)}
-.modal h3{margin-bottom:12px;color:#d97757;font-family:Lora,Georgia,ui-serif,serif}
-.form-group{margin-bottom:10px}
-.form-group label{display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#b7b5a9}
-.form-group input,.form-group select,.form-group textarea{width:100%;padding:6px 10px;background:#1b1b19;border:1px solid #3e3e38;border-radius:8px;color:#faf9f5;font-size:13px;font-family:Poppins,ui-sans-serif,system-ui,sans-serif;transition:border-color .2s}
-.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#d97757;box-shadow:0 0 0 3px rgba(217,119,87,0.15)}
-.form-group textarea{resize:vertical;min-height:40px}
-.form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
-.form-help{font-size:12px;color:#908e84;margin-top:4px}
-.signal-light{display:inline-block;width:20px;height:20px;border-radius:50%;margin:0 2px;vertical-align:middle}
-.signal-green{background:#8ca06f;box-shadow:0 0 6px #8ca06f}
-.signal-yellow{background:#e08d6f;box-shadow:0 0 6px #e08d6f}
-.signal-red{background:#ef4444;box-shadow:0 0 6px #ef4444}
-.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
-.status-dot.online{background:#8ca06f;box-shadow:0 0 4px #8ca06f}
-.status-dot.offline{background:#ef4444}
-.status-dot.loading{background:#fdd835;animation:pulse 1s infinite}
-.switch{position:relative;display:inline-block;width:36px;height:20px}
-.switch input{opacity:0;width:0;height:0}
-.slider{position:absolute;cursor:pointer;inset:0;background:#30302e;border-radius:20px;transition:.3s;border:1px solid #4a4a43}
-.slider:before{content:'';position:absolute;height:14px;width:14px;left:2px;bottom:2px;background:#908e84;border-radius:50%;transition:.3s}
-input:checked+.slider{background:#d97757;border-color:#d97757}
-input:checked+.slider:before{transform:translateX(16px);background:#faf9f5}
-.alert-box{background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:8px;padding:12px;margin:8px 0;color:#ef4444;font-weight:500;font-size:13px}
-.info-box{background:rgba(217,119,87,0.08);border:1px solid #d97757;border-radius:8px;padding:12px;margin:8px 0;color:#d97757;font-size:13px}
-.progress-bar{background:#30302e;border-radius:10px;height:20px;overflow:hidden;margin:8px 0}
-.progress-fill{height:100%;background:linear-gradient(90deg,#8ca06f,#d97757);border-radius:10px;transition:width .5s;display:flex;align-items:center;justify-content:center;color:#faf9f5;font-size:11px;font-weight:600}
-.empty-state{text-align:center;padding:40px;color:#908e84;font-family:Lora,Georgia,ui-serif,serif;font-style:italic}
-canvas{width:100%!important;max-height:300px}
-</style>
 </body>
 </html>

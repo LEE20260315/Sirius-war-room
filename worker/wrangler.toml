@@ -1,0 +1,17 @@
+name = "sirius-proxy"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# KV 命名空间(在 Cloudflare Dashboard 创建后填入 id)
+[[kv_namespaces]]
+binding = "SIRIUS_CACHE"
+id = "TODO_CREATE_KV_NAMESPACE_AND_FILL_ID"
+
+[vars]
+CORS_ORIGIN = "https://lee20260315.github.io"
+
+# 注意:以下全部用 secrets(wrangler secret put),不在此文件中:
+# FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_APP_TOKEN
+# SIRIUS_ACCESS_TOKEN
+# FEISHU_TABLE_REAL_TRADES / FEISHU_TABLE_SIM_TRADES / FEISHU_TABLE_POOL_SNAPSHOT
+# FEISHU_TABLE_ACCOUNT_LEDGER / FEISHU_TABLE_VARIETY_DICT
