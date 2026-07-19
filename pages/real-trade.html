@@ -222,9 +222,9 @@
 <script>
   document.addEventListener('DOMContentLoaded', function() {
     FTApp.init();
-    FTApp.switchAccount('real');  // 实盘页强制锁定 real 账户
     CloudSync.init();
     FTRealTrade.init();
+    FTApp.switchAccount('real');  // 实盘页强制锁定 real 账户,放最后让 FTRealTrade 的 ft:account-switched 监听器已就位
   });
 </script>
 </body>

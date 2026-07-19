@@ -333,6 +333,7 @@ window.FTRealTrade = (function() {
     if (hintEl) hintEl.textContent = '请选择交易类型';
     setTradeTimeNow();
     renderContractOptions('');
+    bindTradeTypeButtons();
   }
 
   // ============ 渲染最近 10 笔成交 ============
