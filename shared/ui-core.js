@@ -533,11 +533,17 @@
     refreshSignals: function () {
       var body = el('signalBody');
       if (!body) return;
-      var pool = FTApp.getCurrentAccount().pool || [];
+      var acc = FTApp.getCurrentAccount();
+      var pool = acc.pool || [];
       if (!pool.length) {
         body.innerHTML = '<tr><td colspan="6" class="empty-state">观察池为空，请先在观察池添加品种</td></tr>';
         return;
       }
+      // 当前账户开仓持仓品种集合(用于在信号矩阵标注"持仓中")
+      var heldSymbols = {};
+      (acc.trades || []).forEach(function (t) {
+        if (t && t.symbol) heldSymbols[t.symbol] = (t.dir === 'long' ? '多' : (t.dir === 'short' ? '空' : ''));
+      });
       var html = '';
       var buyCount = 0;  // 含买入+加仓，用于健康度统计
       pool.forEach(function (c) {
@@ -651,8 +657,11 @@
           return '<span class="signal-light signal-' + light + '"></span>';
         }
 
-        html += '<tr>' +
-          '<td class="py-2 px-4 text-ink">' + FTApp.escapeHtml(c.symbol) + '</td>' +
+        html += '<tr' + (heldSymbols[c.symbol] ? ' style="background:rgba(140,160,111,0.08)"' : '') + '>' +
+          '<td class="py-2 px-4 text-ink whitespace-nowrap">' +
+            FTApp.escapeHtml(c.symbol) +
+            (heldSymbols[c.symbol] ? ' <span class="ml-1 px-1.5 py-0.5 rounded text-xs font-medium" style="background:#4d3528;color:#e0a98f;border:1px solid #6b4533">持仓' + (heldSymbols[c.symbol] || '') + '</span>' : '') +
+          '</td>' +
           '<td class="py-2 px-4">' + lightHtml(valLight) + '</td>' +
           '<td class="py-2 px-4">' + lightHtml(momLight) + '</td>' +
           '<td class="py-2 px-4">' + lightHtml(fundLight) + '</td>' +

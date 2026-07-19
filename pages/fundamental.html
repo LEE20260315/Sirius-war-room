@@ -268,40 +268,46 @@
         <thead>
           <tr class="bg-surface-hover">
             <th class="py-2.5 px-4 text-left text-xs font-medium text-ink-muted uppercase tracking-wider">维度</th>
+            <th class="py-2.5 px-4 text-left text-xs font-medium text-ink-muted uppercase tracking-wider">启用</th>
             <th class="py-2.5 px-4 text-left text-xs font-medium text-ink-muted uppercase tracking-wider">评分 (1-10)</th>
             <th class="py-2.5 px-4 text-left text-xs font-medium text-ink-muted uppercase tracking-wider">说明</th>
           </tr>
         </thead>
         <tbody id="fundBody" class="divide-y divide-edge-faint">
-          <tr>
+          <tr data-dim="supply">
             <td class="py-3 px-4 text-ink-secondary font-medium">供需格局</td>
-            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundSupply" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
+            <td class="py-3 px-4"><label class="switch"><input type="checkbox" id="fundSupplyEnabled" checked onchange="FTRender.onDimToggle('supply')"><span class="slider"></span></label></td>
+            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundSupply" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value;FTRender.updateFundTotal()"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
             <td class="py-3 px-4"><input type="text" id="fundSupplyNote" placeholder="供应过剩/紧缺，需求强弱" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
           </tr>
-          <tr>
+          <tr data-dim="inventory">
             <td class="py-3 px-4 text-ink-secondary font-medium">库存水平</td>
-            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundInventory" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
+            <td class="py-3 px-4"><label class="switch"><input type="checkbox" id="fundInventoryEnabled" checked onchange="FTRender.onDimToggle('inventory')"><span class="slider"></span></label></td>
+            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundInventory" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value;FTRender.updateFundTotal()"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
             <td class="py-3 px-4"><input type="text" id="fundInventoryNote" placeholder="交易所库存/社会库存趋势" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
           </tr>
-          <tr>
+          <tr data-dim="basis">
             <td class="py-3 px-4 text-ink-secondary font-medium">基差结构</td>
-            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundBasis" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
+            <td class="py-3 px-4"><label class="switch"><input type="checkbox" id="fundBasisEnabled" checked onchange="FTRender.onDimToggle('basis')"><span class="slider"></span></label></td>
+            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundBasis" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value;FTRender.updateFundTotal()"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
             <td class="py-3 px-4"><input type="text" id="fundBasisNote" placeholder="近远月价差，现货升贴水" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
           </tr>
-          <tr>
+          <tr data-dim="macro">
             <td class="py-3 px-4 text-ink-secondary font-medium">宏观环境</td>
-            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundMacro" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
+            <td class="py-3 px-4"><label class="switch"><input type="checkbox" id="fundMacroEnabled" checked onchange="FTRender.onDimToggle('macro')"><span class="slider"></span></label></td>
+            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundMacro" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value;FTRender.updateFundTotal()"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
             <td class="py-3 px-4"><input type="text" id="fundMacroNote" placeholder="政策/汇率/经济周期" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
           </tr>
-          <tr>
+          <tr data-dim="technical">
             <td class="py-3 px-4 text-ink-secondary font-medium">技术形态</td>
-            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundTechnical" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
+            <td class="py-3 px-4"><label class="switch"><input type="checkbox" id="fundTechnicalEnabled" checked onchange="FTRender.onDimToggle('technical')"><span class="slider"></span></label></td>
+            <td class="py-3 px-4"><input type="range" min="0" max="10" value="0" id="fundTechnical" class="w-full accent-brand-500" oninput="this.nextElementSibling.textContent=this.value;FTRender.updateFundTotal()"><span class="font-mono text-brand-500 text-sm ml-2">—</span></td>
             <td class="py-3 px-4"><input type="text" id="fundTechnicalNote" placeholder="趋势/支撑阻力/成交量" class="w-full bg-surface-dim border border-edge-faint rounded-sm px-2 py-1 text-xs text-ink-secondary"></td>
           </tr>
         </tbody>
         <tfoot>
           <tr class="bg-surface-hover">
-            <td class="py-3 px-4 text-ink font-semibold">综合评分</td>
+            <td class="py-3 px-4 text-ink font-semibold" colspan="2">综合评分</td>
             <td class="py-3 px-4 font-mono text-xl font-semibold text-brand-500" id="fundTotalScore">— / 100</td>
             <td class="py-3 px-4">
               <div class="progress-bar" style="height:8px">
@@ -313,6 +319,8 @@
       </table>
     </div>
   </div>
+  <!-- 数据源开关说明 -->
+  <div class="mb-3 text-xs text-ink-dim">数据源开关：禁用某维度后,剩余启用维度权重自动归一化至 100%。至少需启用一个数据源。</div>
   <!-- 拒绝出分原因清单（数据不足时由 updateFundTotal 渲染） -->
   <div id="fundRefuseReasons" class="mb-3"></div>
   <!-- Action Buttons -->
@@ -432,16 +440,28 @@
   function setDim(dim, score, spanText, note, opts) {
     var sInp = el(dim.inputId), nInp = el(dim.noteId);
     if (!sInp) return;
-    sInp.disabled = !!(opts && opts.disabled);
+    var disabled = !!(opts && opts.disabled);
+    sInp.disabled = disabled;
     sInp.value = score;
     if (sInp.nextElementSibling) {
       sInp.nextElementSibling.textContent = spanText;
       sInp.nextElementSibling.style.color = (opts && opts.gray) ? '#6e6d68' : '';
     }
     if (nInp) {
-      nInp.disabled = !!(opts && opts.disabled);
+      nInp.disabled = disabled;
       nInp.value = note;
     }
+    // 同步"启用"开关状态(模板禁用时勾去,模板启用时勾上)
+    var cap = dim.key.charAt(0).toUpperCase() + dim.key.slice(1);
+    var enabledCb = el('fund' + cap + 'Enabled');
+    if (enabledCb) {
+      enabledCb.checked = !disabled;
+      // 模板禁用的维度,用户不应能强制开启(避免数据缺失还硬出分)
+      enabledCb.disabled = disabled;
+    }
+    // 行级灰显
+    var row = sInp.closest('tr');
+    if (row) row.style.opacity = disabled ? '0.5' : '';
   }
 
   // ===== Task 2.5: 位置定性小结（基于分位%/COT/基差三数据源翻译为可决策一句话） =====
@@ -664,6 +684,38 @@
     this.updateFundTotal();
     this.renderExternalFundSignal();
     renderPositionSummary(sym, templateName);
+  };
+
+  // ===== 用户启用/禁用数据源开关 =====
+  // 切换某维度启用状态 → 重新归一化权重并刷新评分
+  // 若当前为最后一个启用维度且用户尝试关闭,阻止并提示
+  FTRender.onDimToggle = function (dimKey) {
+    var dim = FUND_DIMENSION_CONFIG.dimensions.find(function (d) { return d.key === dimKey; });
+    if (!dim) return;
+    var cap = dimKey.charAt(0).toUpperCase() + dimKey.slice(1);
+    var cb = el('fund' + cap + 'Enabled');
+    if (!cb) return;
+    // 统计当前用户启用的维度数(排除模板禁用)
+    var userEnabledCount = 0;
+    FUND_DIMENSION_CONFIG.dimensions.forEach(function (d) {
+      var dc = d.key.charAt(0).toUpperCase() + d.key.slice(1);
+      var ccb = el('fund' + dc + 'Enabled');
+      if (ccb && !ccb.disabled && ccb.checked) userEnabledCount++;
+    });
+    // 阻止禁用最后一个启用维度
+    if (!cb.checked && userEnabledCount === 0) {
+      cb.checked = true;
+      FTApp.showToast('请至少启用一个数据源');
+      return;
+    }
+    // 应用 disabled 状态到对应 input + note
+    var sInp = el(dim.inputId);
+    var nInp = el(dim.noteId);
+    if (sInp) sInp.disabled = !cb.checked;
+    if (nInp) nInp.disabled = !cb.checked;
+    var row = sInp && sInp.closest('tr');
+    if (row) row.style.opacity = cb.checked ? '' : '0.5';
+    this.updateFundTotal();
   };
 
   // ===== Task 4: 覆写 updateFundTotal =====

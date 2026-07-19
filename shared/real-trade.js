@@ -54,10 +54,66 @@ window.FTRealTrade = (function() {
   }
 
   // ============ 合约选项渲染(按交易所分组) ============
+  // 规则：
+  //   1) 每个品种以 defaultContract 为主力(标注"(主力)")
+  //   2) 再动态推算当前日期起未来 5 个活跃交割月(活跃月=01/05/09/10)
+  //   3) CZCE 用 3 位年月格式(年份末位 + 2 位月,如 SR701=2027年1月)
+  //      其余交易所用 4 位(年份后两位 + 2 位月,如 RB2601=2026年1月)
+  //   4) 去重后按交易所 <optgroup> 分组渲染
+  //   5) 搜索过滤同时匹配品种中文名 / 英文代码 / 合约代码 三者任一
+  const ACTIVE_MONTHS = ['01', '05', '09', '10'];
+
+  function computeFutureActiveMonths(count) {
+    const result = [];
+    const now = new Date();
+    let y = now.getFullYear();
+    let m = now.getMonth() + 1; // 1-12
+    while (result.length < count) {
+      const mm = String(m).padStart(2, '0');
+      if (ACTIVE_MONTHS.indexOf(mm) >= 0) {
+        result.push({ year: y, month: mm });
+      }
+      m++;
+      if (m > 12) { m = 1; y++; }
+    }
+    return result;
+  }
+
+  function buildContractListForVariety(v, futureMonths) {
+    const isCZCE = v.exchange === 'CZCE';
+    const contracts = [];
+    const seen = {};
+    // 1) 主力优先
+    const mainContract = v.defaultContract;
+    if (mainContract) {
+      contracts.push({ contract: mainContract, isMain: true });
+      seen[mainContract] = true;
+    }
+    // 2) 未来 5 个活跃交割月
+    futureMonths.forEach(function(fm) {
+      let contractCode;
+      if (isCZCE) {
+        // 3 位:年份末位 + 2 位月 (SR701=2027年1月)
+        const yyShort = String(fm.year).slice(-1);
+        contractCode = v.code + yyShort + fm.month;
+      } else {
+        // 4 位:年份后两位 + 2 位月 (RB2601=2026年1月)
+        const yyFull = String(fm.year).slice(-2);
+        contractCode = v.code + yyFull + fm.month;
+      }
+      if (!seen[contractCode]) {
+        contracts.push({ contract: contractCode, isMain: false });
+        seen[contractCode] = true;
+      }
+    });
+    return contracts;
+  }
+
   function renderContractOptions(filter) {
     const select = document.getElementById('rtContract');
     if (!select) return;
     const filterLower = (filter || '').toLowerCase().trim();
+    const futureMonths = computeFutureActiveMonths(5);
     const grouped = {};
     // 按交易所+品种代码排序
     const sorted = EXCHANGE_VARIETIES.slice().sort(function(a, b) {
@@ -65,26 +121,33 @@ window.FTRealTrade = (function() {
       return a.code < b.code ? -1 : 1;
     });
     sorted.forEach(function(v) {
-      if (filterLower) {
-        const symbolMatch = v.symbol.toLowerCase().includes(filterLower);
-        const codeMatch = v.code.toLowerCase().includes(filterLower);
-        const contractMatch = v.defaultContract.toLowerCase().includes(filterLower);
-        if (!symbolMatch && !codeMatch && !contractMatch) return;
-      }
       if (!grouped[v.exchange]) {
         grouped[v.exchange] = { name: v.exchangeName, items: [] };
       }
-      grouped[v.exchange].items.push(v);
+      const contracts = buildContractListForVariety(v, futureMonths);
+      grouped[v.exchange].items.push({ variety: v, contracts: contracts });
     });
     let html = '<option value="">请选择合约</option>';
     Object.keys(grouped).forEach(function(ex) {
       html += '<optgroup label="' + grouped[ex].name + '">';
-      grouped[ex].items.forEach(function(v) {
-        html += '<option value="' + v.symbol + '" data-code="' + v.code +
-                '" data-multiplier="' + v.multiplier +
-                '" data-margin="' + v.marginRate +
-                '" data-contract="' + v.defaultContract + '">' +
-                v.defaultContract + ' - ' + v.symbol + ' (' + v.code + ')</option>';
+      grouped[ex].items.forEach(function(item) {
+        const v = item.variety;
+        item.contracts.forEach(function(c) {
+          // 搜索过滤:品种中文名 / 英文代码 / 合约代码 三者任一
+          if (filterLower) {
+            const symMatch = v.symbol.toLowerCase().includes(filterLower);
+            const codeMatch = v.code.toLowerCase().includes(filterLower);
+            const contractMatch = c.contract.toLowerCase().includes(filterLower);
+            if (!symMatch && !codeMatch && !contractMatch) return;
+          }
+          const label = c.contract + (c.isMain ? ' (主力)' : '') +
+                        ' - ' + v.symbol + ' (' + v.code + ')';
+          html += '<option value="' + v.symbol + '" data-code="' + v.code +
+                  '" data-multiplier="' + v.multiplier +
+                  '" data-margin="' + v.marginRate +
+                  '" data-contract="' + c.contract + '">' +
+                  label + '</option>';
+        });
       });
       html += '</optgroup>';
     });
@@ -109,9 +172,11 @@ window.FTRealTrade = (function() {
     }
     const meta = findVarietyMeta(opt.value);
     if (meta && metaEl) {
+      // 显示当前选中合约(可能为非主力的远月合约)
+      const contract = opt.getAttribute('data-contract') || meta.defaultContract;
       metaEl.textContent = '乘数:' + meta.multiplier +
                            ' / 保证金率:' + (meta.marginRate * 100).toFixed(0) + '%' +
-                           ' / 合约:' + meta.defaultContract;
+                           ' / 合约:' + contract;
     }
   }
 
@@ -199,13 +264,15 @@ window.FTRealTrade = (function() {
     const tradeTime = document.getElementById('rtTradeTime').value;
     const meta = findVarietyMeta(opt.value);
     if (!meta) { showToast('合约元数据缺失'); return; }
+    // 使用所选 <option> 的 data-contract(允许选择非默认主力合约)
+    const selectedContract = opt.getAttribute('data-contract') || meta.defaultContract;
 
     const isOpen = selectedTradeType.endsWith('_open');
     const record = {
       client_id: 'rt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
       account: 'real',
       symbol: opt.value,
-      contract: meta.defaultContract,
+      contract: selectedContract,
       trade_type: selectedTradeType,
       direction: selectedTradeType.startsWith('long') ? '多' : '空',
       action: selectedTradeType.split('_')[1],  // open / add / close

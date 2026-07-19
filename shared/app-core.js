@@ -1405,12 +1405,24 @@ function saveCloudSyncConfig() {
   if (!proxyInput || !tokenInput) { showToast('表单未找到'); return; }
   var proxyUrl = (proxyInput.value || '').trim();
   var accessToken = (tokenInput.value || '').trim();
+  // ① 非空校验:任一字段为空则阻止保存
   if (!proxyUrl || !accessToken) { showToast('请填写代理地址和访问口令'); return; }
   // 持久化到 localStorage / sessionStorage,cloud-sync.js configure 内部会读
   localStorage.setItem('ft_proxy_base', proxyUrl);
   sessionStorage.setItem('ft_access_token', accessToken);
-  showToast('配置已保存,正在连接飞书...');
-  if (window.CloudSync && CloudSync.configure) {
+  showToast('配置已保存,正在重新初始化云同步...');
+  // ② 保存成功后立即调用 CloudSync.reinit() 重新初始化连接(无需手动刷新页面)
+  if (window.CloudSync && CloudSync.reinit) {
+    CloudSync.reinit({ proxyBaseUrl: proxyUrl, accessToken: accessToken })
+      .then(function (ok) {
+        if (ok) showToast('✓ 云同步已启用,飞书数据已加载');
+        else showToast('✗ 连接失败,请检查代理地址和口令');
+      })
+      .catch(function (err) {
+        showToast('✗ 连接失败: ' + (err.message || err));
+      });
+  } else if (window.CloudSync && CloudSync.configure) {
+    // 兼容回退:旧版 CloudSync 无 reinit 方法时,直接 configure
     CloudSync.configure({ proxyBaseUrl: proxyUrl, accessToken: accessToken })
       .then(function (ok) {
         if (ok) showToast('✓ 云同步已启用,飞书数据已加载');
@@ -1434,7 +1446,20 @@ function testCloudSync() {
     return;
   }
   if (resultEl) resultEl.innerHTML = '<span class="text-ink-muted"><span class="status-dot loading"></span>正在测试...</span>';
-  if (window.CloudSync && CloudSync.configure) {
+  // 测试连接:用 reinit(testOnly=true),不触发 loadAll
+  if (window.CloudSync && CloudSync.reinit) {
+    CloudSync.reinit({ proxyBaseUrl: proxyUrl, accessToken: accessToken, testOnly: true })
+      .then(function (ok) {
+        if (ok) {
+          if (resultEl) resultEl.innerHTML = '<span class="text-success"><span class="status-dot online"></span>✓ 连接成功</span>';
+        } else {
+          if (resultEl) resultEl.innerHTML = '<span class="text-error"><span class="status-dot offline"></span>✗ 口令或代理无效</span>';
+        }
+      })
+      .catch(function (err) {
+        if (resultEl) resultEl.innerHTML = '<span class="text-error"><span class="status-dot offline"></span>✗ ' + (err.message || err) + '</span>';
+      });
+  } else if (window.CloudSync && CloudSync.configure) {
     CloudSync.configure({ proxyBaseUrl: proxyUrl, accessToken: accessToken, testOnly: true })
       .then(function (ok) {
         if (ok) {

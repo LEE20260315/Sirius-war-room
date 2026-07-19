@@ -23,16 +23,15 @@ const CloudSync = {
   // ============ 内部状态 ============
   _state: {
     initialized: false,
+    listenerBound: false,
     syncing: false,
     lastSyncAt: null,
     lastError: null,
     queueProcessing: false,
   },
 
-  // ============ 初始化 ============
+  // ============ 初始化(幂等,可重复调用) ============
   init() {
-    if (this._state.initialized) return;
-    this._state.initialized = true;
     // 从 localStorage 读代理地址(允许用户在设置页配置)
     const base = localStorage.getItem('ft_proxy_base');
     if (base) this.config.proxyBaseUrl = base.replace(/\/$/, '');
@@ -40,11 +39,14 @@ const CloudSync = {
     const token = FTApp.loadSecure('sirius_token');
     if (token) this.config.accessToken = token;
     this.config.enabled = !!(this.config.proxyBaseUrl && this.config.accessToken);
-    // 监听网络恢复,自动补传
-    window.addEventListener('online', () => {
-      this.setStatus('loading', '网络恢复,补传中...');
-      this.flushQueue();
-    });
+    // 监听网络恢复,自动补传(只绑一次,允许 init 重复调用)
+    if (!this._state.listenerBound) {
+      this._state.listenerBound = true;
+      window.addEventListener('online', () => {
+        this.setStatus('loading', '网络恢复,补传中...');
+        this.flushQueue();
+      });
+    }
     // 初始状态指示
     if (!this.config.enabled) {
       this.setStatus('offline', '云同步: 未配置');
@@ -53,7 +55,23 @@ const CloudSync = {
     } else {
       this.setStatus('loading', '云同步: 连接中...');
     }
+    this._state.initialized = true;
     console.log('[CloudSync] 初始化完成,enabled=', this.config.enabled);
+  },
+
+  // ============ 重新初始化(设置页保存后调用) ============
+  // 重置内部状态 + 重新读取配置 + 绑定监听 + 测试连接 + 拉取全量
+  // 这是对外暴露的"保存后即时生效"入口,内部委托给 configure()
+  reinit(opts) {
+    opts = opts || {};
+    // 强制重新读取存储(无视缓存)
+    this._state.initialized = false;
+    this.init();
+    return this.configure({
+      proxyBaseUrl: opts.proxyBaseUrl,
+      accessToken: opts.accessToken,
+      testOnly: opts.testOnly
+    });
   },
 
   // ============ 配置更新(设置页调用) ============
