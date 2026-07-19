@@ -16,7 +16,7 @@
 
 ## 在线访问
 
-https://lee20260315.github.io/futures-tracker/
+https://lee20260315.github.io/Sirius-war-room/
 
 ## 本地运行
 
@@ -43,7 +43,7 @@ python -m http.server 8000
 ## 文件结构
 
 ```
-futures-tracker/
+Sirius-war-room/
 ├── pages/              # 8 个 HTML 页面
 ├── shared/
 │   ├── app-core.js     # 状态管理 + 数据存储 + 行情抓取(双账户隔离)

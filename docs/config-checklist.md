@@ -57,7 +57,7 @@ npx wrangler deploy
 
 ## 三、前端配置(用户在浏览器内填)
 
-打开 `https://lee20260315.github.io/futures-tracker/pages/settings.html` → 「Sirius 云同步配置」分区:
+打开 `https://lee20260315.github.io/Sirius-war-room/pages/settings.html` → 「Sirius 云同步配置」分区:
 
 | 字段 | 填什么 |
 |---|---|
