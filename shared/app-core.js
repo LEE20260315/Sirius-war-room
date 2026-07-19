@@ -3,7 +3,7 @@
 // auto-refresh, theme toggle, backup/import/export, and init function.
 
 // ============ VERSION ============
-const APP_VERSION = '2026.07.15-v11';
+const APP_VERSION = '2026.07.19-v1';  // Sirius 期货作战室:state 账户隔离 + 云同步
 
 // ============ DATA STORE ============
 // 交易所分类品种主数据：覆盖国内五大期货交易所
@@ -151,59 +151,215 @@ const FUND_DIMENSIONS = [
   {key:'positionPlan',label:'仓位计划'}
 ];
 
+// ============ STATE(账户隔离结构)============
+// Sirius 期货作战室:state.accounts.sim / state.accounts.real 双账户隔离
+// 切换账户时只读 state.accounts[state.currentAccount],互不污染
+function _emptyAccount() {
+  return {
+    pool: [],
+    fundamentals: {},
+    trades: [],           // 模拟持仓(开仓中)
+    closedTrades: [],     // 模拟已平仓
+    journal: [],
+    equityHistory: [],
+    rolloverHistory: [],
+    priceSnapshots: {},   // { [symbol]: [{date:'YYYY-MM-DD', price}, ...] } 动量因子数据源
+    realTrades: [],       // 实盘成交流水(由 CloudSync 从飞书 real_trades 表拉取)
+    ledger: []            // 资金账户流水(出入金+每日权益快照)
+  };
+}
+
+function _buildVarietyDict() {
+  // 从 EXCHANGE_VARIETIES 派生品种参数字典,可被飞书 variety_dict 表覆盖
+  var dict = {};
+  EXCHANGE_VARIETIES.forEach(function(v) {
+    dict[v.symbol] = {
+      exchange: v.exchange,
+      exchangeName: v.exchangeName,
+      category: v.category,
+      code: v.code,
+      multiplier: v.multiplier,
+      marginRate: v.marginRate,
+      defaultContract: v.defaultContract
+    };
+  });
+  return dict;
+}
+
 let state = {
   version: APP_VERSION,
+  currentAccount: 'sim',   // 'sim' | 'real'
   settings: {initEquity:15000,target:1000000,maxRisk:2,maxRiskSweet:8,drawdownWarn:20,commission:1,slippage:1,dataSource:'auto',apiUrl:'',maxSinglePosition:0.3,maxTotalPosition:0.8},
-  pool: [],
-  fundamentals: {},
-  trades: [],
-  closedTrades: [],
-  journal: [],
-  equityHistory: [],
-  rolloverHistory: [],
-  priceSnapshots: {},   // { [symbol]: [{date:'YYYY-MM-DD', price}, ...] } 动量因子数据源
+  accounts: {
+    sim: _emptyAccount(),
+    real: _emptyAccount()
+  },
+  varietyDict: {},         // 由 _buildVarietyDict() 初始化,可被飞书表覆盖
+  syncQueue: [],           // CloudSync 失败补传队列
   lastBackup: null
 };
+
+// 读取当前账户对象(所有页面读写数据的统一入口)
+function getCurrentAccount() {
+  return state.accounts[state.currentAccount] || state.accounts.sim;
+}
+
+// 切换账户:写入 state + 触发 ft:account-switched 事件让 UI 刷新
+function switchAccount(type) {
+  if (type !== 'sim' && type !== 'real') return;
+  if (state.currentAccount === type) return;
+  state.currentAccount = type;
+  saveState();
+  // 更新顶部切换按钮高亮
+  var btnSim = document.getElementById('acctBtnSim');
+  var btnReal = document.getElementById('acctBtnReal');
+  if (btnSim && btnReal) {
+    if (type === 'sim') {
+      btnSim.classList.add('active');
+      btnSim.className = btnSim.className.replace('bg-surface-base text-ink-muted', 'bg-brand-500 text-brand-50');
+      btnReal.classList.remove('active');
+      btnReal.className = btnReal.className.replace('bg-brand-500 text-brand-50', 'bg-surface-base text-ink-muted');
+    } else {
+      btnReal.classList.add('active');
+      btnReal.className = btnReal.className.replace('bg-surface-base text-ink-muted', 'bg-brand-500 text-brand-50');
+      btnSim.classList.remove('active');
+      btnSim.className = btnSim.className.replace('bg-brand-500 text-brand-50', 'bg-surface-base text-ink-muted');
+    }
+  }
+  // 更新账户徽章
+  var badge = document.getElementById('accountBadge');
+  if (badge) badge.textContent = (type === 'sim' ? '模拟盘' : '实盘');
+  // 触发全局账户切换事件,ui-core.js 监听后重渲染当前页可见容器
+  document.dispatchEvent(new CustomEvent('ft:account-switched', {detail: {account: type}}));
+}
+
+// 云同步状态条(复用 status-dot 三态,与 setDataSourceStatus 同模式)
+function setSyncStatus(type, msg) {
+  var el = document.getElementById('syncStatus');
+  if (!el) return;
+  var dotClass = type==='online'?'online':type==='loading'?'loading':'offline';
+  el.innerHTML = '<span class="status-dot ' + dotClass + '"></span>' + (msg || '');
+}
+
+// 兼容旧字段:把 accounts[currentAccount].xxx 暴露为 state.xxx 透明转发,
+// 让未迁移的旧代码(如 trade-engine stub)继续工作。新代码应直接用 getCurrentAccount()。
+// 注意:JavaScript 对象 getter 不能被 JSON.stringify 序列化,saveState 时这些 getter 会被跳过,
+// 这正是我们想要的——只持久化真正的数据(accounts 嵌套对象),不存转发别名。
+function _migrateLegacyState(saved) {
+  // 老结构检测:saved 直接有 pool/trades 等扁平字段,无 accounts 嵌套
+  if (saved && !saved.accounts && (saved.pool || saved.trades || saved.closedTrades)) {
+    console.log('[FT] 迁移:扁平 state → 账户隔离结构');
+    // 备份老 state 以便回滚
+    try {
+      localStorage.setItem('futures_tracker_state_backup_' + Date.now(), JSON.stringify(saved));
+    } catch(e) {}
+
+    var sim = _emptyAccount();
+    // 把老字段迁移到 sim 账户
+    sim.pool = saved.pool || [];
+    sim.fundamentals = saved.fundamentals || {};
+    sim.trades = saved.trades || [];
+    sim.closedTrades = saved.closedTrades || [];
+    sim.journal = saved.journal || [];
+    sim.equityHistory = saved.equityHistory || [];
+    sim.rolloverHistory = saved.rolloverHistory || [];
+    sim.priceSnapshots = saved.priceSnapshots || {};
+
+    // 清掉 saved 上的老扁平字段,改为 accounts 嵌套
+    delete saved.pool;
+    delete saved.fundamentals;
+    delete saved.trades;
+    delete saved.closedTrades;
+    delete saved.journal;
+    delete saved.equityHistory;
+    delete saved.rolloverHistory;
+    delete saved.priceSnapshots;
+    delete saved.realTrades;
+    delete saved.realLedger;
+    delete saved.simTrades;
+    delete saved.simLedger;
+
+    saved.accounts = {sim: sim, real: _emptyAccount()};
+    saved.currentAccount = saved.currentAccount || 'sim';
+    saved.syncQueue = saved.syncQueue || [];
+    saved.varietyDict = saved.varietyDict || _buildVarietyDict();
+    // settings 保留(老结构也有 settings)
+    if (!saved.settings) {
+      saved.settings = state.settings;
+    }
+    // 触发版本迁移:exchange 回填等
+    _migratePoolExchange(sim.pool);
+  } else if (saved && saved.accounts) {
+    // 新结构但可能缺字段(如 syncQueue/varietyDict)
+    if (!saved.syncQueue) saved.syncQueue = [];
+    if (!saved.varietyDict) saved.varietyDict = _buildVarietyDict();
+    if (!saved.currentAccount) saved.currentAccount = 'sim';
+    if (!saved.accounts.sim) saved.accounts.sim = _emptyAccount();
+    if (!saved.accounts.real) saved.accounts.real = _emptyAccount();
+    // 补齐 sim/real 内可能缺失的 realTrades/ledger 字段(老版 accounts 结构可能没这俩)
+    ['sim','real'].forEach(function(k) {
+      if (!saved.accounts[k].realTrades) saved.accounts[k].realTrades = [];
+      if (!saved.accounts[k].ledger) saved.accounts[k].ledger = [];
+    });
+    // exchange 回填
+    _migratePoolExchange(saved.accounts.sim.pool);
+    _migratePoolExchange(saved.accounts.real.pool);
+  }
+  return saved;
+}
+
+// v11 exchange 回填逻辑(从老 loadState 抽出,迁移后调用)
+function _migratePoolExchange(pool) {
+  if (!Array.isArray(pool)) return;
+  pool.forEach(function(c) {
+    if (!c.exchange) {
+      var m = findVarietyMeta(c.symbol);
+      if (m && m.exchange) c.exchange = m.exchange;
+    }
+  });
+}
 
 function loadState() {
   try {
     const s = localStorage.getItem('futures_tracker_state');
+    // 初始化 varietyDict(无论是否有 saved state)
+    state.varietyDict = _buildVarietyDict();
+    state.accounts.sim = _emptyAccount();
+    state.accounts.real = _emptyAccount();
+
     if (s) {
-      const saved = JSON.parse(s);
-      // 必须用 Object.assign 修改原 state 对象，不能用 state = {...} 重新赋值
-      // 因为 window.FTApp.state 在导出时已绑定原对象引用，重新赋值会导致 FTApp.state 指向旧空对象
-      // （这是跨页面 signal/trade 等页面读不到 pool 的根因）
+      let saved = JSON.parse(s);
+      // 必须用 Object.assign 修改原 state 对象,不能用 state = {...} 重新赋值
+      // 因为 window.FTApp.state 在导出时已绑定原对象引用,重新赋值会导致 FTApp.state 指向旧空对象
+      // (这是跨页面 signal/trade 等页面读不到 pool 的根因)
+      // 迁移老扁平结构 → accounts 嵌套结构
+      saved = _migrateLegacyState(saved);
       Object.assign(state, saved);
-      // 版本迁移：旧版本（XX0虚拟合约或品种数不匹配）重置为最新真实主力合约
+      // 确保 settings 完整(老版本可能缺字段)
+      if (!state.settings) state.settings = {initEquity:15000,target:1000000,maxRisk:2,maxRiskSweet:8,drawdownWarn:20,commission:1,slippage:1,dataSource:'auto',apiUrl:'',maxSinglePosition:0.3,maxTotalPosition:0.8};
+      if (!state.settings.dataSource) state.settings.dataSource = 'auto';
+      // 版本迁移:重置预置品种为最新合约(仅当版本不同)
       if (!state.version || state.version !== APP_VERSION) {
         console.log('[FT] 版本迁移:', state.version, '→', APP_VERSION);
-        // 保留用户自定义品种（非预置品种），重置预置品种为最新合约
-        const userCustom = (state.pool || []).filter(c => !DEFAULT_COMMODITIES.find(d => d.symbol === c.symbol));
-        state.pool = [...JSON.parse(JSON.stringify(DEFAULT_COMMODITIES)), ...userCustom];
-        // v9: 数据源默认升级为 auto（旧版默认 manual 导致行情不自动获取）
-        // 用户如需 manual 可在设置页切回
-        if (state.settings) state.settings.dataSource = 'auto';
-        // v11: 回填存量品种缺失的 exchange 字段（按品种名反查 EXCHANGE_VARIETIES 主数据）
-        // 根因：2026-07-13 分组功能上线前添加的观察层品种未存 exchange，导致分组落入"其他"组
-        (state.pool || []).forEach(function(c) {
-          if (!c.exchange) {
-            var m = findVarietyMeta(c.symbol);
-            if (m && m.exchange) c.exchange = m.exchange;
-          }
-        });
+        // 保留用户自定义品种(非预置),重置预置品种为最新合约
+        var simPool = state.accounts.sim.pool || [];
+        var userCustom = simPool.filter(function(c) { return !DEFAULT_COMMODITIES.find(function(d){ return d.symbol === c.symbol; }); });
+        state.accounts.sim.pool = [...JSON.parse(JSON.stringify(DEFAULT_COMMODITIES)), ...userCustom];
+        _migratePoolExchange(state.accounts.sim.pool);
         state.version = APP_VERSION;
         saveState();
       }
       if (!state.lastBackup) state.lastBackup = null;
-      // priceSnapshots 兼容旧版本：无则初始化为 {}
-      if (!state.priceSnapshots || typeof state.priceSnapshots !== 'object') state.priceSnapshots = {};
+      if (!state.syncQueue) state.syncQueue = [];
     } else {
-      state.pool = JSON.parse(JSON.stringify(DEFAULT_COMMODITIES));
-      state.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
+      // 首次使用:初始化 sim 账户的 pool 和 equityHistory
+      state.accounts.sim.pool = JSON.parse(JSON.stringify(DEFAULT_COMMODITIES));
+      state.accounts.sim.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
     }
   } catch(e) {
-    state.pool = JSON.parse(JSON.stringify(DEFAULT_COMMODITIES));
-    state.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
+    console.warn('[FT] loadState 异常,重置:', e);
+    state.accounts.sim.pool = JSON.parse(JSON.stringify(DEFAULT_COMMODITIES));
+    state.accounts.sim.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
   }
 }
 
@@ -287,7 +443,7 @@ async function restoreFromGist() {
       if (!ok) { showToast('已取消恢复'); return false; }
     }
     Object.assign(state, restored);
-    if (!state.priceSnapshots) state.priceSnapshots = {};
+    if (!getCurrentAccount().priceSnapshots) getCurrentAccount().priceSnapshots = {};
     saveState();
     showToast('已从 GitHub Gist 恢复数据');
     if (window.FTRender) {
@@ -589,19 +745,20 @@ async function fetchPricesFromFutsseApi(poolItems) {
 // === Combined fetch: futsseapi(CORS) → EastMoney JSONP → Sina → Manual ===
 async function fetchPricesNow() {
   const t0 = Date.now();
-  if (!state.pool || state.pool.length === 0) {
+  const acc = getCurrentAccount();
+  if (!acc.pool || acc.pool.length === 0) {
     setDataSourceStatus('offline', '数据源: 手动模式 · 观察池为空');
     setLastUpdateTime(new Date().toLocaleTimeString('zh-CN'));
     showToast('观察池为空，请先添加品种');
     return {ok:0, fail:0, total:0};
   }
-  console.log('[FT] 开始刷新行情, 池中品种:', state.pool.map(c => c.symbol + '/' + c.contractCode).join(', '));
+  console.log('[FT] 开始刷新行情, 池中品种:', acc.pool.map(c => c.symbol + '/' + c.contractCode).join(', '));
   setDataSourceStatus('loading', '数据源: 正在获取行情...');
   fetchStatusMap = {};
-  state.pool.forEach(c => { fetchStatusMap[c.symbol] = 'manual'; });
+  acc.pool.forEach(c => { fetchStatusMap[c.symbol] = 'manual'; });
 
   // Step 0: futsseapi（CORS 直连）— SHFE/DCE 品种
-  const futsseResult = await fetchPricesFromFutsseApi(state.pool);
+  const futsseResult = await fetchPricesFromFutsseApi(acc.pool);
   let futsseOk = futsseResult.ok;
   console.log('[FT] futsseapi: 成功', futsseOk);
   var fetchFailReasons = [];
@@ -609,7 +766,7 @@ async function fetchPricesNow() {
   // Step 1: EastMoney JSONP — CZCE/GFEX 及 futsseapi 未覆盖品种
   let emOk = 0, emFail = [];
   const emPending = [];
-  state.pool.forEach(c => {
+  acc.pool.forEach(c => {
     if (fetchStatusMap[c.symbol] === 'ok') return; // futsseapi 已成功
     const secid = EASTMONEY_SYMBOL_MAP[c.symbol];
     if (secid) {
@@ -630,7 +787,7 @@ async function fetchPricesNow() {
     const sinaSymbols = [], symbolToPool = {};
     emFail.forEach(sym => {
       const s = SINA_SYMBOL_MAP[sym];
-      if (s) { sinaSymbols.push(s); symbolToPool[s] = state.pool.find(x => x.symbol === sym); }
+      if (s) { sinaSymbols.push(s); symbolToPool[s] = acc.pool.find(x => x.symbol === sym); }
     });
     if (sinaSymbols.length) {
       sinaAttempted = sinaSymbols.length;
@@ -647,12 +804,12 @@ async function fetchPricesNow() {
 
   const totalOk = futsseOk + emOk + sinaOk;
   const elapsed = Date.now() - t0;
-  const poolLen = state.pool.length;
+  const poolLen = acc.pool.length;
   const stillManual = poolLen - totalOk;
 
   if (totalOk > 0) {
     // 百分位自动计算：对每个有价格的品种更新 percentile
-    state.pool.forEach(c => {
+    acc.pool.forEach(c => {
       if (c.price && c.price > 0) {
         const pct = computePercentile(c.symbol, c.price);
         if (pct !== null) c.percentile = pct;
@@ -684,6 +841,7 @@ async function fetchPricesNow() {
 
 async function fetchPricesFromCustomApi() {
   if (state.settings.dataSource !== 'api' || !state.settings.apiUrl) return {ok:0,total:0};
+  const acc = getCurrentAccount();
   try {
     const resp = await fetch(state.settings.apiUrl);
     if (!resp.ok) throw new Error('API error');
@@ -691,14 +849,14 @@ async function fetchPricesFromCustomApi() {
     let ok = 0;
     if (Array.isArray(data)) {
       data.forEach(item => {
-        const c = state.pool.find(x => x.symbol === item.symbol);
+        const c = acc.pool.find(x => x.symbol === item.symbol);
         if (c && item.price) { c.price = item.price; ok++; }
       });
     }
     if (ok > 0) { saveState(); if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool(); onPriceUpdate(); }
-    return {ok, total: state.pool.length};
+    return {ok, total: acc.pool.length};
   } catch(e) {
-    return {ok:0, total: state.pool.length};
+    return {ok:0, total: acc.pool.length};
   }
 }
 
@@ -792,10 +950,11 @@ function openModal(id) { document.getElementById(id).classList.add('show'); }
 
 // ============ EQUITY ============
 function getCurrentEquity() {
+  const acc = getCurrentAccount();
   let eq = state.settings.initEquity;
-  state.closedTrades.forEach(t => eq += t.pnl);
-  state.trades.forEach(t => {
-    const c = state.pool.find(x=>x.symbol===t.symbol);
+  acc.closedTrades.forEach(t => eq += t.pnl);
+  acc.trades.forEach(t => {
+    const c = acc.pool.find(x=>x.symbol===t.symbol);
     const curPrice = c ? c.price : t.price;
     const grossPnl = t.dir==='long' ? (curPrice - t.price) * t.multiplier * t.lots : (t.price - curPrice) * t.multiplier * t.lots;
     eq += grossPnl - (t.openCommission || 0);
@@ -805,7 +964,7 @@ function getCurrentEquity() {
 
 function getRealizedEquity() {
   let eq = state.settings.initEquity;
-  state.closedTrades.forEach(t => eq += t.pnl);
+  getCurrentAccount().closedTrades.forEach(t => eq += t.pnl);
   return eq;
 }
 
@@ -837,9 +996,10 @@ function onPriceUpdate() {
 function updateEquityHistory() {
   const today = new Date().toISOString().slice(0,10);
   const eq = getCurrentEquity();
-  const last = state.equityHistory[state.equityHistory.length-1];
+  const acc = getCurrentAccount();
+  const last = acc.equityHistory[acc.equityHistory.length-1];
   if (!last || last.date !== today) {
-    state.equityHistory.push({date: today, equity: eq});
+    acc.equityHistory.push({date: today, equity: eq});
   } else {
     last.equity = eq;
   }
@@ -854,7 +1014,7 @@ function updateHeaderStats() {
 }
 
 function populateSymbolSelect(sel) {
-  sel.innerHTML = state.pool.map(c=>`<option value="${escapeHtml(c.symbol)}">${escapeHtml(c.symbol)}</option>`).join('');
+  sel.innerHTML = getCurrentAccount().pool.map(c=>`<option value="${escapeHtml(c.symbol)}">${escapeHtml(c.symbol)}</option>`).join('');
 }
 
 function populateFundSelect() {
@@ -931,9 +1091,10 @@ function computePercentile(symbol, price) {
 
 function recordPriceSnapshot(symbol, price) {
   if (!symbol || !price || price <= 0) return;
-  if (!state.priceSnapshots) state.priceSnapshots = {};
+  const acc = getCurrentAccount();
+  if (!acc.priceSnapshots) acc.priceSnapshots = {};
   var today = new Date().toISOString().slice(0, 10);
-  var arr = state.priceSnapshots[symbol] || [];
+  var arr = acc.priceSnapshots[symbol] || [];
   // 同日去重：仅当价格变化>0.5%时才覆盖（过滤盘中微小波动，保留显著变化）
   if (arr.length && arr[arr.length - 1].date === today) {
     var prev = arr[arr.length - 1].price;
@@ -945,17 +1106,18 @@ function recordPriceSnapshot(symbol, price) {
   }
   // 保留最近 60 条
   if (arr.length > 60) arr = arr.slice(arr.length - 60);
-  state.priceSnapshots[symbol] = arr;
+  acc.priceSnapshots[symbol] = arr;
 }
 
 // 冷启动回补：从东财日线 K 线接口拉取近 30 日历史收盘价，填充 priceSnapshots
 // 仅对快照不足 20 条的品种执行，避免重复拉取
 async function backfillPriceSnapshots() {
-  if (!state.pool || !state.pool.length) return;
-  if (!state.priceSnapshots) state.priceSnapshots = {};
+  const acc = getCurrentAccount();
+  if (!acc.pool || !acc.pool.length) return;
+  if (!acc.priceSnapshots) acc.priceSnapshots = {};
   var needBackfill = [];
-  state.pool.forEach(function (c) {
-    var arr = state.priceSnapshots[c.symbol] || [];
+  acc.pool.forEach(function (c) {
+    var arr = acc.priceSnapshots[c.symbol] || [];
     if (arr.length < 20 && EASTMONEY_SYMBOL_MAP[c.symbol]) {
       needBackfill.push(c.symbol);
     }
@@ -968,7 +1130,7 @@ async function backfillPriceSnapshots() {
     return fetchDailyKlineFromEastMoney(sym).then(function (klines) {
       if (klines && klines.length) {
         // 合并：保留已有快照 + 补充历史（按日期去重，已有的不覆盖）
-        var existing = state.priceSnapshots[sym] || [];
+        var existing = acc.priceSnapshots[sym] || [];
         var existingDates = {};
         existing.forEach(function (s) { existingDates[s.date] = true; });
         klines.forEach(function (k) {
@@ -977,7 +1139,7 @@ async function backfillPriceSnapshots() {
         // 按日期排序后保留最近 60 条
         existing.sort(function (a, b) { return a.date.localeCompare(b.date); });
         if (existing.length > 60) existing = existing.slice(existing.length - 60);
-        state.priceSnapshots[sym] = existing;
+        acc.priceSnapshots[sym] = existing;
         backfilled++;
       }
     });
@@ -1074,7 +1236,8 @@ function fetchDailyKlineJSONP(baseUrl) {
 // 返回 { ma20, ma60, roc20, score, status, samples }
 // status: 'up' | 'down' | 'flat' | 'unknown'（样本<20 时 unknown）
 function computeMomentum(symbol) {
-  var arr = (state.priceSnapshots && state.priceSnapshots[symbol]) || [];
+  const acc = getCurrentAccount();
+  var arr = (acc.priceSnapshots && acc.priceSnapshots[symbol]) || [];
   var samples = arr.length;
   if (samples < 20) {
     return { ma20: null, ma60: null, roc20: null, score: null, status: 'unknown', samples: samples };
@@ -1112,8 +1275,9 @@ function computeMomentum(symbol) {
 // 解决"不点刷新行情百分位就为0"的问题
 function ensurePercentileComputed() {
   if (!priceHistory || !priceHistory.records) return;
-  if (!state.pool || !state.pool.length) return;
-  state.pool.forEach(function(c) {
+  const acc = getCurrentAccount();
+  if (!acc.pool || !acc.pool.length) return;
+  acc.pool.forEach(function(c) {
     if (c.price && c.price > 0) {
       var pct = computePercentile(c.symbol, c.price);
       if (pct !== null) c.percentile = pct;
@@ -1142,7 +1306,8 @@ function getFundamentalComposite(symbol) {
 // dimKey: 'supply' | 'inventory' | 'basis'
 // 注意：不再基于百分位推算（消除低百分位→高分→甜点→买入的循环论证）
 function getEffectiveFundScore(symbol, dimKey) {
-  var fund = state.fundamentals[symbol] || {};
+  const acc = getCurrentAccount();
+  var fund = acc.fundamentals[symbol] || {};
   var dim = fund[dimKey] || {};
   var manualScore = (dim.score != null) ? dim.score : 0;
   if (manualScore > 0) return manualScore;  // 用户已手动评分，优先使用
@@ -1159,7 +1324,8 @@ function getEffectiveFundScore(symbol, dimKey) {
 }
 
 function isSweetSignal(symbol) {
-  var c = state.pool.find(function(x) { return x.symbol === symbol; });
+  const acc = getCurrentAccount();
+  var c = acc.pool.find(function(x) { return x.symbol === symbol; });
   if (!c) return false;
   // percentile 为 null/undefined/0(未计算) 时返回 false，不误判甜点
   if (c.percentile == null || c.percentile === 0) return false;
@@ -1195,6 +1361,8 @@ function loadSettings() {
   if (tokenInput) tokenInput.value = loadSecure('githubToken') || '';
   var gistIdDisplay = document.getElementById('gistIdDisplay');
   if (gistIdDisplay) gistIdDisplay.textContent = loadSecure('gistId') ? 'Gist ID: ' + loadSecure('gistId').substring(0,8) + '...' : '未同步';
+  // Sirius 云同步配置回填(只回填代理地址,不回填口令)
+  loadCloudSyncConfig();
   updateHeaderStats();
 }
 
@@ -1217,13 +1385,76 @@ function saveSettings() {
     if (tokenInput.value) saveSecure('githubToken', tokenInput.value);
     else removeSecure('githubToken');
   }
-  // If initial equity changed, adjust equityHistory baseline proportionally
-  if (oldInit !== state.settings.initEquity && state.equityHistory.length > 0) {
+  // If initial equity changed, adjust equityHistory baseline proportionally (遍历两个账户)
+  if (oldInit !== state.settings.initEquity) {
     const ratio = state.settings.initEquity / oldInit;
-    state.equityHistory = state.equityHistory.map(h => ({date: h.date, equity: h.equity * ratio}));
+    ['sim', 'real'].forEach(k => {
+      if (state.accounts[k] && state.accounts[k].equityHistory.length > 0) {
+        state.accounts[k].equityHistory = state.accounts[k].equityHistory.map(h => ({date: h.date, equity: h.equity * ratio}));
+      }
+    });
   }
   saveState();
   showToast('设置已保存');
+}
+
+// ============ Sirius 云同步配置(设置页调用) ============
+function saveCloudSyncConfig() {
+  var proxyInput = document.getElementById('cloudProxyUrl');
+  var tokenInput = document.getElementById('cloudAccessToken');
+  if (!proxyInput || !tokenInput) { showToast('表单未找到'); return; }
+  var proxyUrl = (proxyInput.value || '').trim();
+  var accessToken = (tokenInput.value || '').trim();
+  if (!proxyUrl || !accessToken) { showToast('请填写代理地址和访问口令'); return; }
+  // 持久化到 localStorage / sessionStorage,cloud-sync.js configure 内部会读
+  localStorage.setItem('ft_proxy_base', proxyUrl);
+  sessionStorage.setItem('ft_access_token', accessToken);
+  showToast('配置已保存,正在连接飞书...');
+  if (window.CloudSync && CloudSync.configure) {
+    CloudSync.configure({ proxyBaseUrl: proxyUrl, accessToken: accessToken })
+      .then(function (ok) {
+        if (ok) showToast('✓ 云同步已启用,飞书数据已加载');
+        else showToast('✗ 连接失败,请检查代理地址和口令');
+      })
+      .catch(function (err) {
+        showToast('✗ 连接失败: ' + (err.message || err));
+      });
+  }
+}
+
+function testCloudSync() {
+  var proxyInput = document.getElementById('cloudProxyUrl');
+  var tokenInput = document.getElementById('cloudAccessToken');
+  var resultEl = document.getElementById('cloudSyncTestResult');
+  if (!proxyInput || !tokenInput) return;
+  var proxyUrl = (proxyInput.value || '').trim();
+  var accessToken = (tokenInput.value || '').trim();
+  if (!proxyUrl || !accessToken) {
+    if (resultEl) resultEl.innerHTML = '<span class="text-error">请填写代理地址和访问口令</span>';
+    return;
+  }
+  if (resultEl) resultEl.innerHTML = '<span class="text-ink-muted"><span class="status-dot loading"></span>正在测试...</span>';
+  if (window.CloudSync && CloudSync.configure) {
+    CloudSync.configure({ proxyBaseUrl: proxyUrl, accessToken: accessToken, testOnly: true })
+      .then(function (ok) {
+        if (ok) {
+          if (resultEl) resultEl.innerHTML = '<span class="text-success"><span class="status-dot online"></span>✓ 连接成功</span>';
+        } else {
+          if (resultEl) resultEl.innerHTML = '<span class="text-error"><span class="status-dot offline"></span>✗ 口令或代理无效</span>';
+        }
+      })
+      .catch(function (err) {
+        if (resultEl) resultEl.innerHTML = '<span class="text-error"><span class="status-dot offline"></span>✗ ' + (err.message || err) + '</span>';
+      });
+  }
+}
+
+// 设置页加载时回填已保存的代理地址
+function loadCloudSyncConfig() {
+  var base = localStorage.getItem('ft_proxy_base') || '';
+  var proxyInput = document.getElementById('cloudProxyUrl');
+  if (proxyInput && base) proxyInput.value = base;
+  // 口令走 sessionStorage,不回填到 input(安全考虑)
 }
 
 // ============ TABS ============
@@ -1256,10 +1487,13 @@ function init() {
   if (window.FTRender && window.FTRender.loadFundamental) window.FTRender.loadFundamental();
   if (window.FTRender && window.FTRender.renderTrades) window.FTRender.renderTrades();
   if (window.FTRender && window.FTRender.renderJournal) window.FTRender.renderJournal();
-  if (state.equityHistory.length === 0) {
-    state.equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
-    saveState();
-  }
+  // 初始化两个账户的 equityHistory(若为空)
+  ['sim', 'real'].forEach(k => {
+    if (state.accounts[k] && state.accounts[k].equityHistory.length === 0) {
+      state.accounts[k].equityHistory = [{date: new Date().toISOString().slice(0,10), equity: state.settings.initEquity}];
+    }
+  });
+  saveState();
   initAutoRefresh();
   initAutoBackup();
   updateBackupDisplay();
@@ -1293,8 +1527,11 @@ function requestNotificationPermission() {
 }
 
 window.FTApp = {
-  // init / state
-  init, loadState, saveState, state, getCurrentEquity, getRealizedEquity,
+  // init / state(Sirius 账户隔离)
+  init, loadState, saveState, state,
+  getCurrentAccount, switchAccount, setSyncStatus,
+  getCurrentEquity, getRealizedEquity,
+  APP_VERSION,
   // 行情拉取
   fetchPricesNow, fetchPricesFromCustomApi, onPriceUpdate,
   // 自动刷新
@@ -1310,6 +1547,7 @@ window.FTApp = {
   setDataSourceStatus, setLastUpdateTime, updateHeaderStats,
   // 设置
   loadSettings, saveSettings,
+  saveCloudSyncConfig, testCloudSync, loadCloudSyncConfig,
   // 安全存储 / Gist 同步 / 通知
   saveSecure, loadSecure, removeSecure, syncToGist, restoreFromGist, clearToken,
   requestNotificationPermission,

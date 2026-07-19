@@ -5,3 +5,13 @@ screenshot.png
 online_index.html
 .DS_Store
 Thumbs.db
+
+# Worker (Cloudflare)
+worker/.dev.vars
+worker/.wrangler/
+worker/node_modules/
+
+# Secrets (Sirius 云同步)
+.env
+.env.local
+*.secret
