@@ -4,7 +4,30 @@
  */
 
 import { router } from './router.js';
-import { json, error } from './response.js';
+import { json, error, resolveCorsOrigin } from './response.js';
+
+/**
+ * 构造 OPTIONS 预检响应头(与 response.js 的 buildCorsHeaders 保持一致)
+ * @param {string} corsOrigin - env.CORS_ORIGIN
+ * @param {string|null} requestOrigin - 请求 Origin
+ * @returns {Object} headers 对象
+ */
+function buildOptionsHeaders(corsOrigin, requestOrigin) {
+  const headers = {
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Sirius-Token',
+    'Access-Control-Max-Age': '86400',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+    'Referrer-Policy': 'no-referrer',
+  };
+  const allowedOrigin = resolveCorsOrigin(corsOrigin, requestOrigin);
+  if (allowedOrigin) {
+    headers['Access-Control-Allow-Origin'] = allowedOrigin;
+  }
+  return headers;
+}
 
 export default {
   /**
@@ -15,21 +38,21 @@ export default {
    * @returns {Promise<Response>}
    */
   async fetch(request, env, ctx) {
-    // OPTIONS 预检直接返 204
+    // 提取请求 Origin,附加到 env 副本上,供 response.js 按来源动态返回 CORS 头
+    // (支持 CORS_ORIGIN 配置多域名/通配符,无 Origin 时降级到原行为)
+    const requestOrigin = request.headers.get('Origin');
+    const envWithCors = { ...env, __requestOrigin: requestOrigin };
+
+    // OPTIONS 预检:按 Origin 动态匹配,不匹配时不返回 Allow-Origin 头(浏览器会拒绝)
     if (request.method.toUpperCase() === 'OPTIONS') {
       return new Response(null, {
         status: 204,
-        headers: {
-          'Access-Control-Allow-Origin': env?.CORS_ORIGIN || '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, X-Sirius-Token',
-          'Access-Control-Max-Age': '86400',
-        },
+        headers: buildOptionsHeaders(env?.CORS_ORIGIN, requestOrigin),
       });
     }
 
     try {
-      return await router(request, env, ctx);
+      return await router(request, envWithCors, ctx);
     } catch (e) {
       // 统一错误返回,避免暴露内部堆栈
       const code = (e && e.code) || 'INTERNAL_ERROR';
@@ -39,7 +62,7 @@ export default {
         (e && e.stack ? { stack: e.stack } : null);
       // 飞书 API 错误返回 502,其余 500
       const status = code === 'FEISHU_API_ERROR' ? 502 : 500;
-      return error(code, message, status, detail, env);
+      return error(code, message, status, detail, envWithCors);
     }
   },
 };

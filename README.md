@@ -90,8 +90,6 @@ Sirius-war-room/
 │   ├── chart-engine.js          # Canvas 图表引擎(资金/回撤/归因/胜率)
 │   ├── ui-core.js               # UI 渲染 + 业务逻辑 + 账户切换全局监听
 │   ├── real-trade.js            # 实盘录入模块(合约搜索/按钮化类型/方向校验)
-│   ├── signal-engine.js         # 信号矩阵计算
-│   ├── trade-engine.js          # 模拟交易引擎
 │   ├── fund-dimension-config.js # 基本面五维配置 + 模板 + 拒绝闸门
 │   ├── styles.css               # 公共样式 + Claude Design System 变量
 │   ├── cost-reference.json      # 成本参考数据

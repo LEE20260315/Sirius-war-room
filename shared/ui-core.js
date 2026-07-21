@@ -1,8 +1,32 @@
 // ============ FUTURES TRACKER - UI CORE (FTRender) ============
 // 全局渲染层：负责观察池 / 基本面 / 信号 / 交易 / 日志 / 仪表盘的 DOM 渲染。
 // 依赖 FTApp（app-core.js，已在前置加载），所有方法挂载到 window.FTRender。
-// 因 trade-engine.js / signal-engine.js / chart-engine.js 均为占位 stub，
 // 交易引擎的提交逻辑（FTTrade.*）也在此处补齐，确保现有 HTML 按钮可用。
+//
+// 章节索引(便于导航,搜索 "// ============ N." 跳转):
+//   工具函数:        el / statusBadge / ensureContractList / render*Cell / renderCostInput / getEffectiveCost
+//   1.  观察池渲染    renderPool
+//   1.5 成本线就地录入
+//   2.  addPoolRow   历史按钮别名
+//   3.  品种选择器    动态构建模态框
+//   4.  删除观察池行
+//   5.  保存观察池
+//   6.  加载基本面评分表  loadFundamentalScores
+//   7.  保存基本面评分    saveFundamentalScores
+//   8.  三因子信号矩阵    refreshSignals
+//   9.  持仓/已平仓渲染    renderTrades
+//   10. 打开开仓模态框    openTradeModal
+//   11. 交易日志渲染       renderJournal
+//   12. 打开日志模态框/保存日志
+//   13. 仪表盘渲染         renderDashboard / renderEquityChart / _updateAccountMetrics / _updatePerformanceMetrics / _renderAttributions / _computeAttribution / renderRolloverHistory
+//   14. 加载外部基本面日报 loadExternalFundamental
+//   15. 渲染外部基本面信号面板 renderExternalFundamentalFeed
+//   FTTrade 补齐:        openPosition / closePosition / executeRollover
+//   账户切换全局监听 + renderAll
+//
+// 注:曾考虑按页面拆分为 render-pool.js / render-dashboard.js 等多文件,但因
+// IIFE 内工具函数(el/statusBadge)被所有章节共享,拆分需重构作用域或重复定义,
+// 风险收益比不佳。当前采用单文件 + 章节索引方案保持部署简单与运行稳定。
 
 (function () {
   'use strict';
@@ -1203,7 +1227,7 @@
   // 暴露到全局
   window.FTRender = FTRender;
 
-  // ============ 补齐 FTTrade（trade-engine.js 为 stub，确保 HTML 按钮可用） ============
+  // ============ 补齐 FTTrade（交易引擎逻辑统一在此实现，确保 HTML 按钮可用） ============
   window.FTTrade = window.FTTrade || {};
 
   // 确认开仓（#tradeModal 提交按钮调用）

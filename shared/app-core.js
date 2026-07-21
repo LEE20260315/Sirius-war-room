@@ -3,7 +3,11 @@
 // auto-refresh, theme toggle, backup/import/export, and init function.
 
 // ============ VERSION ============
+// APP_VERSION:语义版本号,变更 state 结构时手动递增(触发老用户 localStorage 迁移)
+// APP_BUILD_SHA:构建标识,理想情况下由 CI 注入 git short sha;当前手动维护为 'manual'
+// 未来如启用 GitHub Actions 部署,可在部署步骤用 sed 替换 APP_BUILD_SHA 占位符
 const APP_VERSION = '2026.07.19-v1';  // Sirius 期货作战室:state 账户隔离 + 云同步
+const APP_BUILD_SHA = 'manual';  // CI 注入占位符,手动部署时保持 'manual'
 
 // ============ DATA STORE ============
 // 交易所分类品种主数据：覆盖国内五大期货交易所
@@ -340,7 +344,7 @@ function loadState() {
       if (!state.settings.dataSource) state.settings.dataSource = 'auto';
       // 版本迁移:重置预置品种为最新合约(仅当版本不同)
       if (!state.version || state.version !== APP_VERSION) {
-        console.log('[FT] 版本迁移:', state.version, '→', APP_VERSION);
+        console.log('[FT] 版本迁移:', state.version, '→', APP_VERSION, '(build:', APP_BUILD_SHA + ')');
         // 保留用户自定义品种(非预置),重置预置品种为最新合约
         var simPool = state.accounts.sim.pool || [];
         var userCustom = simPool.filter(function(c) { return !DEFAULT_COMMODITIES.find(function(d){ return d.symbol === c.symbol; }); });
@@ -1564,7 +1568,7 @@ window.FTApp = {
   init, loadState, saveState, state,
   getCurrentAccount, switchAccount, setSyncStatus,
   getCurrentEquity, getRealizedEquity,
-  APP_VERSION,
+  APP_VERSION, APP_BUILD_SHA,
   // 行情拉取
   fetchPricesNow, fetchPricesFromCustomApi, onPriceUpdate,
   // 自动刷新

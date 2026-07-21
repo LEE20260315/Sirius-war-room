@@ -264,9 +264,17 @@ export function deleteRecord(env, tableId, recordId) {
  * @returns {Promise<Object|null>} 找到的记录对象,或 null
  */
 export async function findRecordByClientId(env, tableId, clientId) {
-  // 简化方案:拉前 100 条本地比对
-  const data = await listRecords(env, tableId, { pageSize: 100 });
+  // 服务端 filter 精确匹配:突破旧方案"拉前 100 条本地比对"的上限,
+  // 直接按 client_id 过滤,适合记录数增长后仍能稳定 upsert。
+  // client_id 是 Text 字段,filter 表达式: CurrentValue.[client_id]="xxx"
+  const escaped = String(clientId)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+  const filter = `CurrentValue.[client_id]="${escaped}"`;
+
+  const data = await listRecords(env, tableId, { filter, pageSize: 10 });
   const items = (data && data.items) || [];
+  // 服务端 filter 后再本地确认一次(防止字段类型差异导致模糊匹配)
   for (const item of items) {
     const cid = item.fields && item.fields.client_id;
     // 兼容字符串、富文本数组等形式

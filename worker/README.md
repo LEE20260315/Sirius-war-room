@@ -213,17 +213,29 @@ curl -X POST -H "X-Sirius-Token: xxx" -H "Content-Type: application/json" \
 - **Body**:字段对象,**必须包含 `client_id` 字段**
 - **响应**:`{ "code": "OK", "data": { "record": {...}, "action": "created" | "updated" } }`
 - **实现说明**:
-  - 当前简化方案:拉前 100 条记录按 `client_id` 本地比对查找
-  - 优化方向:可改用飞书 `filter` 让服务端精确过滤,支持超过 100 条记录的场景
+  - 通过飞书 `filter` 表达式 `CurrentValue.[client_id]="xxx"` 服务端精确过滤
+  - 突破旧方案"拉前 100 条本地比对"的上限,适合记录数增长后仍能稳定 upsert
+  - 服务端过滤后仍本地确认一次,防止字段类型差异导致模糊匹配
 
 ## CORS 配置
 
-Worker 允许以下来源跨域访问(通过 `Access-Control-Allow-Origin` 头):
+Worker 通过 `Access-Control-Allow-Origin` 头允许跨域访问,来源由 `wrangler.toml` 的 `CORS_ORIGIN` 控制:
 
-- 生产:`https://lee20260315.github.io`(由 `wrangler.toml` 的 `CORS_ORIGIN` 控制)
-- 本地:可在 `.dev.vars` 中覆盖为 `http://localhost:*` 之类的值
+- 支持逗号分隔的**多域名**:`"https://a.com,https://b.com"`
+- 支持**通配符**:`"https://*.example.com,http://localhost:*"`
+- 请求 Origin 与配置匹配时,动态回填该 Origin(不匹配则不带 `Allow-Origin` 头,浏览器会拒绝)
+- 未配置时降级为 `'*'`(向后兼容,生产环境应显式收敛)
 
-OPTIONS 预检请求直接返回 204,所有响应统一附加 CORS 头。
+默认配置:
+
+```
+CORS_ORIGIN = "https://lee20260315.github.io,http://localhost:8000,http://localhost:8765,http://localhost:5173"
+```
+
+- 生产:`https://lee20260315.github.io`(GitHub Pages)
+- 本地开发:`http://localhost:8000` / `8765`(`python -m http.server`)、`http://localhost:5173`(Vite)
+
+本地如需其他端口,在 `worker/.dev.vars` 中覆盖 `CORS_ORIGIN` 即可。OPTIONS 预检请求直接返回 204,所有响应统一附加 CORS 头。
 
 ## 错误码
 
@@ -266,6 +278,13 @@ OPTIONS 预检请求直接返回 204,所有响应统一附加 CORS 头。
    - 前端调用接口时通过 `X-Sirius-Token` 请求头携带,Worker 与 `SIRIUS_ACCESS_TOKEN` 比对
    - 即使口令泄露,攻击者也只能读写飞书 Bitable 数据,无法获取飞书 App 凭证
 4. **CORS 限制来源**
-   - 默认只允许 `https://lee20260315.github.io` 跨域访问,降低被恶意站点调用的风险
+   - 默认允许 `https://lee20260315.github.io` + 本地开发端口(`localhost:8000/8765/5173`)
+   - 支持多域名(逗号分隔)与通配符,按请求 Origin 动态回填,不匹配时不返回 `Allow-Origin` 头
 5. **错误响应不泄露堆栈**
    - 全局 `try-catch` 捕获后,生产环境响应体不返回原始堆栈(仅在 `INTERNAL_ERROR` 时返回 `detail.stack`)
+6. **Worker 响应加固(防御纵深)**
+   - 所有响应附加 `X-Content-Type-Options: nosniff`(防 MIME 嗅探)
+   - `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'`(防被 iframe 嵌套)
+   - `Content-Security-Policy: default-src 'none'`(即使被当成 HTML 渲染也不执行任何脚本)
+   - `Referrer-Policy: no-referrer`(不泄露 Referer)
+   - 注:前端 GitHub Pages 静态站无法配置响应头,前端 XSS 防护依赖代码侧转义/沙箱

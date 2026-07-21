@@ -8,7 +8,12 @@ binding = "SIRIUS_CACHE"
 id = "1238882f073d4f2f919383764b5e56a2"
 
 [vars]
-CORS_ORIGIN = "https://lee20260315.github.io"
+# CORS 允许的来源:支持逗号分隔多域名 + 通配符
+# - 生产(GitHub Pages):https://lee20260315.github.io
+# - 本地开发(python -m http.server):http://localhost:8000 / 8765
+# - 本地开发(Vite 等):http://localhost:5173
+# 未配置时 Worker 返回 '*',生产环境应显式收敛
+CORS_ORIGIN = "https://lee20260315.github.io,http://localhost:8000,http://localhost:8765,http://localhost:5173"
 
 # 注意:以下全部用 secrets(wrangler secret put),不在此文件中:
 # FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_APP_TOKEN
