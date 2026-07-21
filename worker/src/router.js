@@ -14,6 +14,43 @@ import {
 } from './feishu.js';
 
 /**
+ * 日期字段名清单(飞书 Bitable 日期类型字段需要毫秒时间戳)
+ */
+const DATETIME_FIELDS = new Set([
+  'trade_time',
+  'created_at',
+  'snapshot_time',
+  'flow_time',
+  'updated_at',
+]);
+
+/**
+ * 把 record 中的日期字段从字符串转成毫秒时间戳
+ * 飞书 Bitable 日期字段只接受 number(毫秒)
+ * 支持格式:ISO 字符串 / "YYYY-MM-DD HH:mm:ss" / 已是 number(跳过) / null(跳过)
+ * @param {Object} fields - 字段对象,会原地修改
+ * @returns {Object} 转换后的字段对象
+ */
+function convertDatetimeFields(fields) {
+  if (!fields || typeof fields !== 'object') return fields;
+  for (const key of Object.keys(fields)) {
+    if (!DATETIME_FIELDS.has(key)) continue;
+    const v = fields[key];
+    if (v == null) continue;
+    if (typeof v === 'number') continue; // 已是数字,跳过
+    if (typeof v === 'string') {
+      // "YYYY-MM-DD HH:mm:ss" 飞书不识别,转成 ISO 再转毫秒
+      const normalized = v.includes('T') ? v : v.replace(' ', 'T');
+      const ms = Date.parse(normalized);
+      if (!isNaN(ms)) {
+        fields[key] = ms;
+      }
+    }
+  }
+  return fields;
+}
+
+/**
  * 获取 table 短名到真实 table_id 的映射
  * @param {Object} env - Worker 环境变量
  * @returns {Object} 短名 -> table_id
@@ -105,6 +142,7 @@ export async function router(req, env, ctx) {
     } catch (e) {
       return error('INVALID_BODY', '请求体不是合法 JSON', 400, null, env);
     }
+    convertDatetimeFields(fields);
     const data = await createRecord(env, table.tableId, fields);
     return json({ code: 'OK', data }, 200, env);
   }
@@ -122,7 +160,7 @@ export async function router(req, env, ctx) {
     if (!Array.isArray(arr)) {
       return error('INVALID_BODY', '批量新增 body 必须是数组', 400, null, env);
     }
-    const records = arr.map((fields) => ({ fields }));
+    const records = arr.map((fields) => ({ fields: convertDatetimeFields(fields) }));
     const data = await batchCreateRecords(env, table.tableId, records);
     return json({ code: 'OK', data }, 200, env);
   }
@@ -137,6 +175,7 @@ export async function router(req, env, ctx) {
     } catch (e) {
       return error('INVALID_BODY', '请求体不是合法 JSON', 400, null, env);
     }
+    convertDatetimeFields(fields);
     const data = await upsertRecord(env, table.tableId, { fields });
     return json({ code: 'OK', data }, 200, env);
   }
@@ -153,6 +192,7 @@ export async function router(req, env, ctx) {
     } catch (e) {
       return error('INVALID_BODY', '请求体不是合法 JSON', 400, null, env);
     }
+    convertDatetimeFields(fields);
     const data = await updateRecord(env, table.tableId, recordId, fields);
     return json({ code: 'OK', data }, 200, env);
   }

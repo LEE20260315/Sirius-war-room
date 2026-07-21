@@ -5,7 +5,7 @@ compatibility_date = "2026-07-01"
 # KV 命名空间(在 Cloudflare Dashboard 创建后填入 id)
 [[kv_namespaces]]
 binding = "SIRIUS_CACHE"
-id = "TODO_CREATE_KV_NAMESPACE_AND_FILL_ID"
+id = "1238882f073d4f2f919383764b5e56a2"
 
 [vars]
 CORS_ORIGIN = "https://lee20260315.github.io"

@@ -151,10 +151,10 @@ const CloudSync = {
       if (!FTApp.state.accounts) {
         FTApp.state.accounts = {sim: {trades:[],closedTrades:[],ledger:[],realTrades:[]}, real: {trades:[],closedTrades:[],ledger:[],realTrades:[]}};
       }
-      // 拉实盘成交流水 → state.accounts.real.trades
+      // 拉实盘成交流水 → state.accounts.real.realTrades
       const realTrades = await this._listRecords('real_trades');
       if (realTrades && realTrades.length) {
-        FTApp.state.accounts.real.trades = realTrades.map(this._normalizeTradeRecord);
+        FTApp.state.accounts.real.realTrades = realTrades.map(this._normalizeTradeRecord);
         FTApp.saveState();
       }
       // 拉模拟成交流水 → 与本地 state.accounts.sim.trades 合并(以飞书 client_id 去重,飞书为准)
