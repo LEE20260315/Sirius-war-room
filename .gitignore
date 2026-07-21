@@ -10,8 +10,12 @@ Thumbs.db
 worker/.dev.vars
 worker/.wrangler/
 worker/node_modules/
+worker/.tmp_*.ps1
 
 # Secrets (Sirius 云同步)
 .env
 .env.local
 *.secret
+
+# IDE / Agent 过程性文档(方案A:不提交)
+.trae/
