@@ -12,15 +12,19 @@ Serverless 代理层,负责:
 ### 架构图(文字版)
 
 ```
-┌──────────────────────┐       HTTPS + X-Sirius-Token       ┌─────────────────────────┐
-│  前端(GitHub Pages)  │  ───────────────────────────────► │  Cloudflare Worker      │
-│  lee20260315.github.io│                                    │  sirius-proxy           │
-└──────────────────────┘                                    │                         │
-                                                            │  ├─ /api/health         │
-                                                            │  ├─ /api/records (CRUD) │
-                                                            │  ├─ /api/records/batch  │
-                                                            │  └─ /api/records/upsert │
-                                                            └───────────┬─────────────┘
+┌──────────────────────┐       HTTPS + X-Sirius-Token       ┌──────────────────────────────────┐
+│  前端(GitHub Pages)  │  ───────────────────────────────► │  Cloudflare Worker               │
+│  lee20260315.github.io│                                    │  sirius-proxy                    │
+└──────────────────────┘                                    │                                  │
+                                                            │  ├─ /api/health                  │
+                                                            │  ├─ /api/records (CRUD)          │
+                                                            │  ├─ /api/records/batch           │
+                                                            │  ├─ /api/records/upsert          │
+                                                            │  ├─ /api/prices (KV 缓存+回源)   │
+                                                            │  ├─ /api/prices/refresh          │
+                                                            │  ├─ /api/klines (KV 缓存)        │
+                                                            │  └─ /api/klines/refresh          │
+                                                            └───────────────────┬──────────────┘
                                                                         │
                                           ┌─────────────────────────────┼─────────────────────────┐
                                           │                             │                         │
@@ -217,6 +221,35 @@ curl -X POST -H "X-Sirius-Token: xxx" -H "Content-Type: application/json" \
   - 突破旧方案"拉前 100 条本地比对"的上限,适合记录数增长后仍能稳定 upsert
   - 服务端过滤后仍本地确认一次,防止字段类型差异导致模糊匹配
 
+### 8. 读取行情缓存
+
+- **方法 / 路径**:`GET /api/prices`
+- **鉴权**:需要 X-Sirius-Token
+- **说明**:stale-while-revalidate 模式。KV 缓存 30s 内直接返回新鲜数据;过期则返回旧值并在后台异步刷新;无缓存(冷启动)时同步抓取。
+- **响应**:`{ "code": "OK", "data": { "prices": { "铜": { "price": 105920, "contract": "CU2609", "updated_at": 1784735485020 }, ... }, "stale": false } }`
+
+### 9. 强制刷新行情缓存
+
+- **方法 / 路径**:`POST /api/prices/refresh`
+- **鉴权**:需要 X-Sirius-Token
+- **说明**:同步抓取全部品种现价,写入 KV(TTL 120s),后台异步 upsert 到飞书 `pool_snapshot` 表(按 `client_id=pool_{symbol}_{YYYY-MM-DD}` 去重)
+- **响应**:`{ "code": "OK", "data": { "ok": 9, "fail": 2, "total": 11, "prices": { ... } } }`
+
+### 10. 读取 K 线缓存
+
+- **方法 / 路径**:`GET /api/klines`
+- **Query 参数**:
+  - `symbol`(可选):品种名,如 `铜`。省略时返回所有已缓存品种
+- **鉴权**:需要 X-Sirius-Token
+- **响应**:`{ "code": "OK", "data": { "klines": { "铜": { "klines": [{ "date": "2024-07-22", "price": 79740 }], "insufficient": false } } } }`
+
+### 11. 强制刷新 K 线缓存
+
+- **方法 / 路径**:`POST /api/klines/refresh`
+- **鉴权**:需要 X-Sirius-Token
+- **说明**:抓取全部品种日线 K 线(klt=101, lmt=750),逐品种写入 KV(TTL 24h)。不足 500 根 K 线的品种标记 `insufficient: true`
+- **响应**:`{ "code": "OK", "data": { "ok": 8, "fail": 3, "total": 11 } }`
+
 ## CORS 配置
 
 Worker 通过 `Access-Control-Allow-Origin` 头允许跨域访问,来源由 `wrangler.toml` 的 `CORS_ORIGIN` 控制:
@@ -229,11 +262,11 @@ Worker 通过 `Access-Control-Allow-Origin` 头允许跨域访问,来源由 `wra
 默认配置:
 
 ```
-CORS_ORIGIN = "https://lee20260315.github.io,http://localhost:8000,http://localhost:8765,http://localhost:5173"
+CORS_ORIGIN = "https://lee20260315.github.io,http://localhost:8000,http://127.0.0.1:8000,http://localhost:8765,http://localhost:5173"
 ```
 
 - 生产:`https://lee20260315.github.io`(GitHub Pages)
-- 本地开发:`http://localhost:8000` / `8765`(`python -m http.server`)、`http://localhost:5173`(Vite)
+- 本地开发:`http://localhost:8000` / `http://127.0.0.1:8000` / `8765`(`python -m http.server`)、`http://localhost:5173`(Vite)
 
 本地如需其他端口,在 `worker/.dev.vars` 中覆盖 `CORS_ORIGIN` 即可。OPTIONS 预检请求直接返回 204,所有响应统一附加 CORS 头。
 

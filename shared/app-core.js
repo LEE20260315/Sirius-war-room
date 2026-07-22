@@ -761,6 +761,60 @@ async function fetchPricesNow() {
   fetchStatusMap = {};
   acc.pool.forEach(c => { fetchStatusMap[c.symbol] = 'manual'; });
 
+  // === Cloud 模式：优先从 Worker 缓存读取（服务端抓取，无 CORS）===
+  if (state.settings.dataSource === 'cloud') {
+    if (window.CloudSync && CloudSync.config.enabled) {
+      try {
+        const cloudT0 = Date.now();
+        const poolLen = acc.pool.length;
+        setDataSourceStatus('loading', '数据源: 云端缓存获取中...');
+        const result = await CloudSync.fetchCachedPrices();
+        const cloudPrices = result.prices || {};
+        let cloudOk = 0;
+        acc.pool.forEach(c => {
+          const p = cloudPrices[c.symbol];
+          if (p && p.price && p.price > 0) {
+            c.price = p.price;
+            fetchStatusMap[c.symbol] = 'ok';
+            cloudOk++;
+          }
+        });
+        if (cloudOk > 0) {
+          // 百分位 + 动量快照
+          acc.pool.forEach(c => {
+            if (c.price && c.price > 0) {
+              const pct = computePercentile(c.symbol, c.price);
+              if (pct !== null) c.percentile = pct;
+              recordPriceSnapshot(c.symbol, c.price);
+            }
+          });
+          saveState();
+          if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool();
+          onPriceUpdate();
+          const cloudElapsed = Date.now() - cloudT0;
+          const cloudStillManual = poolLen - cloudOk;
+          const staleTag = result.stale ? ' (缓存)' : '';
+          const msg = '数据源: 云端缓存' + staleTag + ' (' + cloudOk + '/' + poolLen + ' 成功)' +
+                      (cloudStillManual > 0 ? ' · ' + cloudStillManual + '个需手动' : '') + ' · ' + cloudElapsed + 'ms';
+          setDataSourceStatus('online', msg);
+          setLastUpdateTime(new Date().toLocaleTimeString('zh-CN'));
+          showToast('已更新 ' + cloudOk + ' 个品种价格（云端）' + (cloudStillManual > 0 ? '，' + cloudStillManual + '个需手动' : ''));
+          return { ok: cloudOk, fail: poolLen - cloudOk, total: poolLen };
+        } else {
+          console.warn('[FT] 云端现价全部为空，回退直连');
+          showToast('云端无数据，回退直连');
+        }
+      } catch (e) {
+        console.warn('[FT] 云端现价获取失败，回退直连:', e.message);
+        setDataSourceStatus('loading', '数据源: 云端失败，回退直连...');
+      }
+    } else {
+      console.warn('[FT] cloud 模式但云同步未配置，降级为 auto');
+      showToast('云端模式需先配置云同步，已临时回退直连');
+    }
+  }
+  // 以下为现有 auto/manual 三路降级逻辑（保持不变）...
+
   // Step 0: futsseapi（CORS 直连）— SHFE/DCE 品种
   const futsseResult = await fetchPricesFromFutsseApi(acc.pool);
   let futsseOk = futsseResult.ok;
@@ -1128,6 +1182,46 @@ async function backfillPriceSnapshots() {
   });
   if (!needBackfill.length) return;
   console.log('[FT] 冷启动回补动量快照:', needBackfill.join(', '));
+  // === Cloud 模式：优先从 Worker 批量读取K线缓存 ===
+  if (window.CloudSync && CloudSync.config.enabled) {
+    try {
+      console.log('[FT] 云端K线回补:', needBackfill.join(', '));
+      var cloudResult = await CloudSync.fetchCachedKlines();
+      var cloudKlines = cloudResult.klines || {};
+      var cloudBackfilled = 0;
+      var insufficientCount = 0;
+      needBackfill.forEach(function (sym) {
+        var kdata = cloudKlines[sym];
+        if (kdata && kdata.klines && kdata.klines.length) {
+          var existing = acc.priceSnapshots[sym] || [];
+          var existingDates = {};
+          existing.forEach(function (s) { existingDates[s.date] = true; });
+          kdata.klines.forEach(function (k) {
+            if (!existingDates[k.date]) existing.push(k);
+          });
+          existing.sort(function (a, b) { return a.date.localeCompare(b.date); });
+          if (existing.length > 60) existing = existing.slice(existing.length - 60);
+          acc.priceSnapshots[sym] = existing;
+          cloudBackfilled++;
+          if (kdata.insufficient) insufficientCount++;
+        }
+      });
+      if (cloudBackfilled > 0) {
+        saveState();
+        console.log('[FT] 云端K线回补完成:', cloudBackfilled, '个品种' + (insufficientCount > 0 ? '（其中' + insufficientCount + '个数据不足）' : ''));
+        if (window.FTRender && window.FTRender.refreshSignals) window.FTRender.refreshSignals();
+        if (insufficientCount > 0) {
+          showToast('已回补 ' + cloudBackfilled + ' 个品种动量数据（' + insufficientCount + '个数据不足）');
+        }
+        return; // 云端回补成功，不再走直连
+      } else {
+        console.warn('[FT] 云端K线全部为空，回退直连');
+      }
+    } catch (e) {
+      console.warn('[FT] 云端K线回补失败，回退直连:', e.message);
+    }
+  }
+  // 以下为现有直连回退逻辑（保持不变）...
   var backfilled = 0;
   // 并发拉取（每品种独立 JSONP）
   await Promise.all(needBackfill.map(function (sym) {

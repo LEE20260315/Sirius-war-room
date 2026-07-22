@@ -8,6 +8,7 @@
 
 - **双账户隔离**:模拟盘 / 实盘独立切换,数据互不污染
 - **云端存储**:基于飞书多维表格 + Cloudflare Workers 代理,换浏览器不丢数据
+- **云端行情缓存**:通过 Cloudflare Workers 服务端抓取东财行情(KV 缓存 + stale-while-revalidate),无 CORS 限制,现价刷新速度从 7s → 0.2s
 - **本地优先 + 异步同步**:断网可继续录入,联网自动补传
 - **资金账户复盘**:账户总览 / 资金曲线 / 回撤曲线 / 绩效指标 / 品种理由归因
 - **菜单式实盘录入**:合约按交易所分组 + 主力合约 + 未来 5 个活跃交割月(01/05/09/10) + 智能搜索(品种名/代码/合约号任一) + 按钮化交易类型
@@ -98,7 +99,8 @@ Sirius-war-room/
 ├── worker/                      # Cloudflare Workers 代理
 │   ├── src/
 │   │   ├── index.js             # Worker 入口
-│   │   ├── router.js            # 路由 + token 校验
+│   │   ├── router.js            # 路由 + token 校验 + 行情缓存端点
+│   │   ├── price-fetcher.js     # 东财行情服务端抓取(现价 + K线)
 │   │   ├── feishu.js            # 飞书 API 封装
 │   │   └── response.js          # 统一响应工具
 │   ├── wrangler.toml
@@ -148,6 +150,27 @@ Sirius-war-room/
 
 - 前端只调 Worker 代理,绝不直连飞书写接口
 - Worker 内置 token 校验 + CORS 白名单 + KV 缓存
+
+### 云端行情缓存(cloud 数据源模式)
+
+```
+[Worker KV 缓存] ←── stale-while-revalidate ──── [Cloudflare Worker]
+     │                                                     │
+     │  GET /api/prices ──→ KV 新鲜 → 直接返回              │
+     │  GET /api/prices ──→ KV 过期 → 返回旧值 + 后台刷新   │
+     │  POST /api/prices/refresh ──→ 强制刷新 + 飞书持久化   │
+     │                                                     │
+     │                          fetchAllPrices(symbols)     │
+     │  push2.eastmoney.com ◄────────────────────────────── │
+     │  push2his.eastmoney.com                              │
+     │                                                     │
+     └─ 现价: KV TTL 120s(新鲜期 30s)                     │
+        K线: KV TTL 24h                                    │
+        飞书 pool_snapshot: 按日 upsert(后台异步,不阻塞)   │
+```
+
+- 前端 settings.html 数据源下拉选择「云端缓存（推荐）」,需先配置云同步(Worker URL + 访问口令)
+- cloud 模式失败时自动降级到 futsseapi→东财JSONP→新浪 三路回退
 - 本地 localStorage 双账户隔离存储,断网可继续录入
 
 ## 安全
@@ -164,6 +187,7 @@ Sirius-war-room/
 - 仓库重命名 `futures-tracker` → `Sirius-war-room`
 - 双账户隔离架构(模拟盘/实盘独立 state)
 - 飞书云同步模块 + Cloudflare Workers 代理
+- 云端行情缓存(cloud 数据源模式):Worker 服务端抓取东财行情 + KV stale-while-revalidate + 飞书 pool_snapshot 持久化,现价刷新从 7s → 0.2s,无 CORS 限制
 - 实盘录入页(菜单式合约搜索 + 按钮化交易类型)
 - 仪表盘账户总览 + 资金曲线 + 回撤 + 绩效归因
 - 基本面五维评分 + 数据源开关归一化

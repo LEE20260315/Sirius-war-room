@@ -211,10 +211,11 @@
       <div class="form-group">
         <label>数据源模式</label>
         <select id="setDataSource">
-          <option value="manual">手动输入</option>
+          <option value="cloud">云端缓存（推荐）</option>
           <option value="auto">自动获取（三路降级：东财→新浪→手动）</option>
+          <option value="manual">手动输入</option>
         </select>
-        <div class="form-help">自动模式依次尝试 futsseapi(CORS) → 东财JSONP → 新浪JSONP，失败回退手动</div>
+        <div class="form-help">云端缓存：通过 Worker 服务端抓取，无 CORS 限制，需先配置云同步；自动模式依次尝试 futsseapi(CORS) → 东财JSONP → 新浪JSONP，失败回退手动</div>
       </div>
       <div class="form-group">
         <label>自动备份间隔 (分钟)</label>

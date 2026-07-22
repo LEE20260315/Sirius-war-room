@@ -12,6 +12,30 @@ import {
   deleteRecord,
   upsertRecord,
 } from './feishu.js';
+import { fetchAllPrices, fetchKlines } from './price-fetcher.js';
+
+/**
+ * 行情池品种清单(与前端 DEFAULT_COMMODITIES 中的核心池一致,只取 symbol + contractCode)
+ * 用于 /api/prices/* 与 /api/klines/* 抓取行情
+ */
+const POOL_VARIETIES = [
+  { symbol: '棕榈油', contractCode: 'P2609' },
+  { symbol: '白糖', contractCode: 'SR609' },
+  { symbol: '棉花', contractCode: 'CF609' },
+  { symbol: '天然橡胶', contractCode: 'RU2609' },
+  { symbol: '铜', contractCode: 'CU2609' },
+  { symbol: '黄金', contractCode: 'AU2608' },
+  { symbol: '白银', contractCode: 'AG2608' },
+  { symbol: '多晶硅', contractCode: 'PS2609' },
+  { symbol: '碳酸锂', contractCode: 'LC2611' },
+  { symbol: '豆油', contractCode: 'Y2609' },
+  { symbol: '菜油', contractCode: 'OI609' },
+];
+
+/**
+ * 行情缓存新鲜期(毫秒),超过此时间视为 stale,后台刷新
+ */
+const PRICE_CACHE_TTL_MS = 30 * 1000;
 
 /**
  * 日期字段名清单(飞书 Bitable 日期类型字段需要毫秒时间戳)
@@ -205,6 +229,239 @@ export async function router(req, env, ctx) {
     const recordId = delMatch[1];
     const data = await deleteRecord(env, table.tableId, recordId);
     return json({ code: 'OK', data }, 200, env);
+  }
+
+  // GET /api/prices - 读取行情缓存
+  // KV prices_cache 存 { prices, fetched_at }:
+  //   - 缓存新鲜(< 30s):返回 { prices, stale: false }
+  //   - 缓存过期:返回旧值 { prices, stale: true },ctx.waitUntil 后台刷新
+  //   - 无缓存(冷启动):同步抓取、写 KV、返回 { prices, stale: false }
+  if (path === '/api/prices' && method === 'GET') {
+    const cached = await env.SIRIUS_CACHE.get('prices_cache');
+    if (cached) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(cached);
+      } catch (e) {
+        parsed = null;
+      }
+      if (parsed && parsed.prices && parsed.fetched_at) {
+        const fresh = Date.now() - parsed.fetched_at < PRICE_CACHE_TTL_MS;
+        if (fresh) {
+          return json(
+            { code: 'OK', data: { prices: parsed.prices, stale: false } },
+            200,
+            env
+          );
+        }
+        // 缓存过期:先返回旧值,后台刷新
+        ctx.waitUntil(
+          (async () => {
+            try {
+              const r = await fetchAllPrices(POOL_VARIETIES);
+              await env.SIRIUS_CACHE.put(
+                'prices_cache',
+                JSON.stringify({ prices: r.prices, fetched_at: Date.now() }),
+                { expirationTtl: 120 }
+              );
+            } catch (e) {
+              console.error('[prices] 后台刷新失败:', e);
+            }
+          })()
+        );
+        return json(
+          { code: 'OK', data: { prices: parsed.prices, stale: true } },
+          200,
+          env
+        );
+      }
+    }
+    // 冷启动:同步抓取
+    try {
+      const r = await fetchAllPrices(POOL_VARIETIES);
+      await env.SIRIUS_CACHE.put(
+        'prices_cache',
+        JSON.stringify({ prices: r.prices, fetched_at: Date.now() }),
+        { expirationTtl: 120 }
+      );
+      return json(
+        { code: 'OK', data: { prices: r.prices, stale: false } },
+        200,
+        env
+      );
+    } catch (e) {
+      return error(
+        'PRICE_FETCH_ERROR',
+        `行情抓取失败: ${e.message || e}`,
+        502,
+        null,
+        env
+      );
+    }
+  }
+
+  // POST /api/prices/refresh - 强制刷新行情
+  // 同步抓取 + 写 KV(30s TTL),后台写飞书 pool_snapshot(Task 4)
+  if (path === '/api/prices/refresh' && method === 'POST') {
+    let r;
+    try {
+      r = await fetchAllPrices(POOL_VARIETIES);
+    } catch (e) {
+      return error(
+        'PRICE_FETCH_ERROR',
+        `行情抓取失败: ${e.message || e}`,
+        502,
+        null,
+        env
+      );
+    }
+    // 写 KV 缓存,TTL 120s(KV 最小 60s,留足 stale 窗口)
+    try {
+      await env.SIRIUS_CACHE.put(
+        'prices_cache',
+        JSON.stringify({ prices: r.prices, fetched_at: Date.now() }),
+        { expirationTtl: 120 }
+      );
+    } catch (e) {
+      console.error('[prices] KV 写入失败:', e);
+    }
+    // 后台写飞书 pool_snapshot:不阻塞响应,失败仅记录日志
+    ctx.waitUntil(
+      (async () => {
+        const tableId = env.FEISHU_TABLE_POOL_SNAPSHOT;
+        if (!tableId) {
+          console.error(
+            '[pool_snapshot] 缺少 FEISHU_TABLE_POOL_SNAPSHOT 环境变量'
+          );
+          return;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        const nowMs = Date.now();
+        for (const v of POOL_VARIETIES) {
+          const p = r.prices[v.symbol];
+          if (!p) continue;
+          try {
+            const clientId = `pool_${v.symbol}_${today}`;
+            const fields = {
+              symbol: v.symbol,
+              symbol_code: v.contractCode,
+              price: p.price,
+              // 飞书日期字段需毫秒时间戳;convertDatetimeFields 对 number 跳过,
+              // 直接传 number 即可被飞书正确识别
+              snapshot_time: nowMs,
+              account: 'sim',
+              client_id: clientId,
+            };
+            await upsertRecord(env, tableId, { fields });
+          } catch (e) {
+            console.error(
+              `[pool_snapshot] upsert 失败 ${v.symbol}:`,
+              e && (e.message || e)
+            );
+          }
+        }
+      })()
+    );
+    return json(
+      {
+        code: 'OK',
+        data: { ok: r.ok, fail: r.fail, total: r.total, prices: r.prices },
+      },
+      200,
+      env
+    );
+  }
+
+  // GET /api/klines - 读取 K 线缓存
+  // 可选 ?symbol=铜 单品种;无 symbol 时读 kline_index 后逐个读 kline_{symbol}
+  if (path === '/api/klines' && method === 'GET') {
+    const symbol = url.searchParams.get('symbol');
+    if (symbol) {
+      const cached = await env.SIRIUS_CACHE.get(`kline_${symbol}`);
+      let parsed = null;
+      if (cached) {
+        try {
+          parsed = JSON.parse(cached);
+        } catch (e) {
+          parsed = null;
+        }
+      }
+      if (parsed) {
+        return json(
+          { code: 'OK', data: { klines: { [symbol]: parsed } } },
+          200,
+          env
+        );
+      }
+      return json({ code: 'OK', data: { klines: {} } }, 200, env);
+    }
+    // 无 symbol:读 kline_index,逐个读 kline_{symbol}
+    const indexStr = await env.SIRIUS_CACHE.get('kline_index');
+    let symbols = [];
+    if (indexStr) {
+      try {
+        symbols = JSON.parse(indexStr) || [];
+      } catch (e) {
+        symbols = [];
+      }
+    }
+    const klines = {};
+    if (symbols.length > 0) {
+      const entries = await Promise.all(
+        symbols.map(async (s) => {
+          const v = await env.SIRIUS_CACHE.get(`kline_${s}`);
+          let parsed = null;
+          if (v) {
+            try {
+              parsed = JSON.parse(v);
+            } catch (e) {
+              parsed = null;
+            }
+          }
+          return [s, parsed];
+        })
+      );
+      for (const [s, val] of entries) {
+        if (val) klines[s] = val;
+      }
+    }
+    return json({ code: 'OK', data: { klines } }, 200, env);
+  }
+
+  // POST /api/klines/refresh - 强制刷新 K 线
+  // 每个 symbol 独立 KV kline_{symbol}(TTL 86400),并更新 kline_index
+  if (path === '/api/klines/refresh' && method === 'POST') {
+    let r;
+    try {
+      r = await fetchKlines(POOL_VARIETIES);
+    } catch (e) {
+      return error(
+        'KLINE_FETCH_ERROR',
+        `K 线抓取失败: ${e.message || e}`,
+        502,
+        null,
+        env
+      );
+    }
+    const symbols = Object.keys(r.klines);
+    await Promise.all(
+      symbols.map((s) =>
+        env.SIRIUS_CACHE.put(`kline_${s}`, JSON.stringify(r.klines[s]), {
+          expirationTtl: 86400,
+        })
+      )
+    );
+    // 更新 kline_index(无 TTL,长期保留;下次 refresh 时覆盖)
+    try {
+      await env.SIRIUS_CACHE.put('kline_index', JSON.stringify(symbols));
+    } catch (e) {
+      console.error('[klines] kline_index 写入失败:', e);
+    }
+    return json(
+      { code: 'OK', data: { ok: r.ok, fail: r.fail, total: r.total } },
+      200,
+      env
+    );
   }
 
   // 未匹配任何路由

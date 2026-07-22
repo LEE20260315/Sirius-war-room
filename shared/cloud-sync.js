@@ -454,6 +454,42 @@ const CloudSync = {
     await this.flushQueue();
     FTApp.showToast('同步完成');
   },
+
+  // ============ 行情缓存读取 ============
+  // 从 Worker 读取缓存的现价（服务端抓取，无 CORS）
+  // 返回 { prices: {symbol:{price,contract,updated_at}}, stale: boolean }
+  async fetchCachedPrices() {
+    if (!this.config.enabled) throw new Error('云同步未配置');
+    const resp = await this._fetch('/api/prices', { method: 'GET' });
+    // resp 格式: { code:'OK', data:{ prices:{...}, stale:false } }
+    if (resp && resp.code === 'OK' && resp.data) {
+      return { prices: resp.data.prices || {}, stale: resp.data.stale || false };
+    }
+    throw new Error('云端现价响应格式异常');
+  },
+
+  // 从 Worker 读取缓存的K线数据
+  // symbol 可选，不传返回全部品种
+  // 返回 { klines: { symbol: { klines:[{date,price}], insufficient:boolean } } }
+  async fetchCachedKlines(symbol) {
+    if (!this.config.enabled) throw new Error('云同步未配置');
+    const url = '/api/klines' + (symbol ? '?symbol=' + encodeURIComponent(symbol) : '');
+    const resp = await this._fetch(url, { method: 'GET' });
+    if (resp && resp.code === 'OK' && resp.data) {
+      return { klines: resp.data.klines || {} };
+    }
+    throw new Error('云端K线响应格式异常');
+  },
+
+  // 强制刷新云端现价（触发 Worker 服务端抓取）
+  async refreshPrices() {
+    if (!this.config.enabled) throw new Error('云同步未配置');
+    const resp = await this._fetch('/api/prices/refresh', { method: 'POST' });
+    if (resp && resp.code === 'OK' && resp.data) {
+      return { ok: resp.data.ok, fail: resp.data.fail, total: resp.data.total, prices: resp.data.prices || {} };
+    }
+    throw new Error('云端刷新响应格式异常');
+  },
 };
 
 // ============ 全局导出 ============
