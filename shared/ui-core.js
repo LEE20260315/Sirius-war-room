@@ -92,7 +92,7 @@
   // 分位%单元格：数值 + mini-bar（颜色：≤25绿/≤50黄/≤75橙/>75红）
   // symbol 参数用于区分"价格为0（行情未拉到）"与"price-history.json 未收录（暂无历史）"
   function renderPercentileCell(pct, symbol) {
-    if (pct == null || pct === 0) {
+    if (pct == null) {
       // 进一步区分：若 priceHistory 已加载但本品种无记录 → "暂无历史"
       if (symbol && FTApp.priceHistory) {
         var ph = typeof FTApp.priceHistory === 'function' ? FTApp.priceHistory() : FTApp.priceHistory;
@@ -102,6 +102,16 @@
         }
       }
       return '<span class="text-ink-muted">--</span>';
+    }
+    // pct === 0 是有效值（现价≤3年低点），不与 null 混淆
+    if (pct === 0) {
+      return '<div style="display:flex;align-items:center;gap:4px">' +
+        '<span class="font-mono text-xs" style="color:#8ca06f">0</span>' +
+        '<div style="width:40px;height:6px;background:#2a2823;border-radius:3px;overflow:hidden">' +
+          '<div style="width:0%;height:100%;background:#8ca06f"></div>' +
+        '</div>' +
+        '<span class="text-xs text-ink-faint" title="现价已跌破3年低点">↘</span>' +
+      '</div>';
     }
     var color = pct <= 25 ? '#8ca06f' : (pct <= 50 ? '#d4b656' : (pct <= 75 ? '#e08d6f' : '#ef4444'));
     return '<div style="display:flex;align-items:center;gap:4px">' +

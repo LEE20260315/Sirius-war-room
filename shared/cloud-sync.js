@@ -54,6 +54,17 @@ const CloudSync = {
       this.setStatus('offline', '云同步: 离线待补传 ' + this.queueSize() + ' 条');
     } else {
       this.setStatus('loading', '云同步: 连接中...');
+      // 异步测试连接，更新最终状态（不阻塞 init）
+      this.testConnection().then(ok => {
+        if (ok) {
+          this.setStatus('online', '云同步: 已就绪');
+          this.loadAll();
+        } else {
+          this.setStatus('offline', '云同步: 口令或代理无效');
+        }
+      }).catch(err => {
+        this.setStatus('offline', '云同步: ' + (err.message || '连接失败'));
+      });
     }
     this._state.initialized = true;
     console.log('[CloudSync] 初始化完成,enabled=', this.config.enabled);
