@@ -48,10 +48,10 @@ const EXCHANGE_VARIETIES = [
   {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'尿素',code:'UR',multiplier:20,marginRate:0.08,defaultContract:'UR609'},
   {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'烧碱',code:'SH',multiplier:30,marginRate:0.08,defaultContract:'SH609'},
   {exchange:'CZCE',exchangeName:'郑州商品交易所',category:'能源化工',symbol:'PTA',code:'TA',multiplier:5,marginRate:0.08,defaultContract:'TA609'},
-  // 广州期货交易所 (GFEX) — 4位数字格式
-  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'多晶硅',code:'PS',multiplier:3,marginRate:0.12,defaultContract:'PS2609'},
-  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'工业硅',code:'SI',multiplier:5,marginRate:0.12,defaultContract:'SI2609'},
-  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'碳酸锂',code:'LC',multiplier:1,marginRate:0.15,defaultContract:'LC2611'},
+  // 广州期货交易所 (GFEX) — 3位数字格式（与 CZCE 相同：年份末位+月份）
+  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'多晶硅',code:'PS',multiplier:3,marginRate:0.12,defaultContract:'PS609'},
+  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'工业硅',code:'SI',multiplier:5,marginRate:0.12,defaultContract:'SI609'},
+  {exchange:'GFEX',exchangeName:'广州期货交易所',category:'新能源',symbol:'碳酸锂',code:'LC',multiplier:1,marginRate:0.15,defaultContract:'LC611'},
   // 中国金融期货交易所 (CFFEX)
   {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'沪深300',code:'IF',multiplier:300,marginRate:0.12,defaultContract:'IF2608'},
   {exchange:'CFFEX',exchangeName:'中国金融期货交易所',category:'股指',symbol:'上证50',code:'IH',multiplier:300,marginRate:0.12,defaultContract:'IH2608'},
@@ -92,17 +92,38 @@ function validateContract(contractCode, varietySymbol) {
   const code = contractCode.trim().toUpperCase();
   // 主力连续合约（如 P0, RB0, CU0）— 数据源虚拟代码，允许但提示
   if (/^[A-Z]+0$/.test(code)) return { valid: true, warning: '⚠ ' + code + ' 是主力连续（虚拟代码），建议使用真实月份合约如 ' + code.replace('0','2609'), level: 'warn' };
-  // CZCE 3位数字格式（如 SR609 = 2026年9月，年份用末位）
+  // 检查品种所属交易所
+  var varietyMetaForVc = findVarietyMeta(varietySymbol);
+  var exchange = varietyMetaForVc ? varietyMetaForVc.exchange : '';
+  var is3DigitExchange = exchange === 'CZCE' || exchange === 'GFEX';
+  // CZCE/GFEX 3位数字格式（如 SR609 = 2026年9月，年份用末位）
   const m3 = code.match(/^([A-Z]+)(\d)(\d{2})$/);
   // 4位数字格式（如 RB2609）
   const m4 = code.match(/^([A-Z]+)(\d{4})$/);
   let prefix, yearPart, monthPart, contractYear;
-  if (m4) {
+  if (is3DigitExchange && m3) {
+    // CZCE/GFEX 强制按3位解析
+    prefix = m3[1]; yearPart = m3[2]; monthPart = m3[3];
+    // 跨年推断：以当前年份的十年为基准
+    // 2026年 → 6→2026, 5→2025, 7→2027
+    var curDecade = Math.floor(new Date().getFullYear() / 10) * 10; // 2020
+    contractYear = curDecade + parseInt(yearPart);
+    var curYearNow = new Date().getFullYear();
+    // 若算出的年份比当前早超过4年，进到下个十年末位（如 1→2031 而非 2021）
+    if (curYearNow - contractYear > 4) contractYear += 10;
+    // 若算出的年份比当前晚超过4年，退回上个十年
+    if (contractYear - curYearNow > 4) contractYear -= 10;
+  } else if (m4) {
     prefix = m4[1]; yearPart = m4[2].substring(0,2); monthPart = m4[2].substring(2,4);
     contractYear = 2000 + parseInt(yearPart);  // '26'→2026
   } else if (m3) {
+    // 非3位交易所但收到3位格式 → 补全4位
     prefix = m3[1]; yearPart = m3[2]; monthPart = m3[3];
-    contractYear = 2020 + parseInt(yearPart);  // CZCE 末位年份：'6'→2026, '5'→2025
+    var curDecade = Math.floor(new Date().getFullYear() / 10) * 10;
+    contractYear = curDecade + parseInt(yearPart);
+    var curYearNow = new Date().getFullYear();
+    if (curYearNow - contractYear > 4) contractYear += 10;
+    if (contractYear - curYearNow > 4) contractYear -= 10;
   } else {
     return { valid: false, warning: '合约格式不正确，应为字母+月份（如 RB2609）或主力连续（如 RB0）', level: 'error' };
   }
@@ -141,8 +162,8 @@ const DEFAULT_COMMODITIES = [
   {symbol:'铜',contractCode:'CU2609',multiplier:5,marginRate:0.09,price:0,percentile:0,costLine:0,status:'bottom',category:'有色金属',exchange:'SHFE',tier:'核心'},
   {symbol:'黄金',contractCode:'AU2608',multiplier:1000,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE',tier:'核心'},
   {symbol:'白银',contractCode:'AG2608',multiplier:15,marginRate:0.10,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE',tier:'核心'},
-  {symbol:'多晶硅',contractCode:'PS2609',multiplier:3,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX',tier:'核心'},
-  {symbol:'碳酸锂',contractCode:'LC2611',multiplier:1,marginRate:0.15,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX',tier:'核心'},
+  {symbol:'多晶硅',contractCode:'PS609',multiplier:3,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX',tier:'核心'},
+  {symbol:'碳酸锂',contractCode:'LC611',multiplier:1,marginRate:0.15,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX',tier:'核心'},
   {symbol:'豆油',contractCode:'Y2609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'DCE',tier:'观察'},
   {symbol:'菜油',contractCode:'OI609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE',tier:'观察'}
 ];
@@ -562,23 +583,42 @@ function checkAutoBackup() {
 // ============ AUTO FETCH PRICES ============
 // === futsseapi EastMoney 期货列表 API（CORS 直连，主力数据源）===
 // 支持 CORS（Access-Control-Allow-Origin: *），浏览器可直接 fetch
-// 市场码: 113=SHFE, 114=DCE；CZCE/GFEX 不支持此 API
-const FUTSSE_MARKET_MAP = { 'SHFE': 113, 'DCE': 114 };
+// 市场码: 113=SHFE, 114=DCE, 115=CZCE, 8=GFEX
+// CZCE/GFEX 的 futsseapi 支持可能不完整（API 返回格式可能有差异），代码已做格式兼容
+const FUTSSE_MARKET_MAP = { 'SHFE': 113, 'DCE': 114, 'CZCE': 115, 'GFEX': 8 };
 
 // 将合约代码转换为 futsseapi 的 dm 格式
 // 主力连续(XX0) → code.toLowerCase()+'m'；具体月份 → code.toLowerCase()+月份
+// 交易所规则：
+//   SHFE/DCE/CFFEX: 4位格式（如 CU2609 = 26年09月）
+//   CZCE: 3位格式（如 SR609 = 6年09月，1位年+2位月）
+//   GFEX: 3位格式（同 CZCE，如 PS609 = 6年09月）
 function contractToFutsseDm(contractCode, varietyMeta) {
   if (!contractCode || !varietyMeta) return null;
   const code = varietyMeta.code.toLowerCase();
+  const exchange = varietyMeta.exchange || '';
   const cc = contractCode.trim().toUpperCase();
   if (/^[A-Z]+0$/.test(cc)) return code + 'm'; // 主力连续
-  // 4位数字格式 (RB2609 → rb2609)
-  const m4 = cc.match(/^[A-Z]+(\d{4})$/);
-  if (m4) return code + m4[1];
-  // CZCE 3位数字格式 (SR509 → sr509)
-  const m3 = cc.match(/^[A-Z]+(\d{3})$/);
-  if (m3) return code + m3[1];
-  return null;
+  // 按交易所决定格式
+  const is3Digit = exchange === 'CZCE' || exchange === 'GFEX';
+  const m3 = cc.match(/^([A-Z]+)(\d)(\d{2})$/);
+  const m4 = cc.match(/^([A-Z]+)(\d{4})$/);
+  if (is3Digit && m3) {
+    // CZCE/GFEX 3位格式: SR609 → sr609
+    return code + m3[2] + m3[3];
+  } else if (!is3Digit && m4) {
+    // SHFE/DCE/CFFEX 4位格式: CU2609 → cu2609
+    return code + m4[2];
+  } else if (m4) {
+    // CZCE/GFEX 被传了4位格式 → 仍用后3位
+    return code + m4[2].slice(-3);
+  } else if (m3) {
+    // 非 CZCE/GFEX 但被传了3位格式 → 补全4位（前补当前年份十位）
+    var curYearLast2 = String(new Date().getFullYear()).slice(2);
+    var fullYearDigits = curYearLast2.charAt(0) + m3[2] + m3[3];
+    return code + fullYearDigits;
+  }
+  return code + cc.replace(/^[A-Z]+/, '');
 }
 
 // East Money HTTPS single-stock API (备用)
@@ -716,11 +756,11 @@ async function fetchPricesFromFutsseApi(poolItems) {
     const meta = findVarietyMeta(c.symbol);
     if (!meta || !meta.exchange) return;
     const mc = FUTSSE_MARKET_MAP[meta.exchange];
-    if (!mc) return; // CZCE/GFEX 不支持
+    if (!mc) return; // 该交易所不在 futsseapi 覆盖范围
     const dm = contractToFutsseDm(c.contractCode, meta);
     if (!dm) return;
     if (!byMarket[mc]) byMarket[mc] = [];
-    byMarket[mc].push({item: c, dm: dm});
+    byMarket[mc].push({item: c, dm: dm, exchange: meta.exchange});
   });
   let okCount = 0;
   const markets = Object.keys(byMarket);
@@ -736,7 +776,20 @@ async function fetchPricesFromFutsseApi(poolItems) {
       const priceMap = {};
       data.list.forEach(x => { if (x.dm && x.p && x.p !== '-' && x.p > 0) priceMap[x.dm] = x.p; });
       byMarket[mc].forEach(entry => {
-        const p = priceMap[entry.dm];
+        var dm = entry.dm;
+        var p = priceMap[dm];
+        // CZCE/GFEX: API 可能返回 4位格式（如 sr2609），尝试补全匹配
+        if (!p && (entry.exchange === 'CZCE' || entry.exchange === 'GFEX')) {
+          var cc = entry.item.contractCode.trim().toUpperCase();
+          var altDm = entry.item.contractCode ? entry.item.contractCode.toLowerCase() : '';
+          p = priceMap[altDm];
+          // 再尝试把 3 位转 4 位 (sr609 → sr2609)
+          if (!p && cc.match(/^[A-Z]+\d{3}$/)) {
+            var curYr2 = String(new Date().getFullYear()).slice(2);
+            var altDm4 = altDm.slice(0, -3) + curYr2.charAt(0) + altDm.slice(-3);
+            p = priceMap[altDm4];
+          }
+        }
         if (p && p > 0) { entry.item.price = p; fetchStatusMap[entry.item.symbol] = 'ok'; okCount++; }
       });
     } catch(e) { console.log('[FT] futsseapi 市场', mc, '失败:', e.message); }
@@ -1169,6 +1222,7 @@ function recordPriceSnapshot(symbol, price) {
 
 // 冷启动回补：从东财日线 K 线接口拉取近 30 日历史收盘价，填充 priceSnapshots
 // 仅对快照不足 20 条的品种执行，避免重复拉取
+// 改进：分批重试 + 降级标注 + 云端代理回退
 async function backfillPriceSnapshots() {
   const acc = getCurrentAccount();
   if (!acc.pool || !acc.pool.length) return;
@@ -1182,7 +1236,7 @@ async function backfillPriceSnapshots() {
   });
   if (!needBackfill.length) return;
   console.log('[FT] 冷启动回补动量快照:', needBackfill.join(', '));
-  // === Cloud 模式：优先从 Worker 批量读取K线缓存 ===
+  // === Cloud 模式：优先从 Worker 批量读取K线缓存（无 CORS 限制）===
   if (window.CloudSync && CloudSync.config.enabled) {
     try {
       console.log('[FT] 云端K线回补:', needBackfill.join(', '));
@@ -1221,44 +1275,84 @@ async function backfillPriceSnapshots() {
       console.warn('[FT] 云端K线回补失败，回退直连:', e.message);
     }
   }
-  // 以下为现有直连回退逻辑（保持不变）...
+  // 以下为直连回退逻辑 — 分批 + 间隔重试 + 降级标注
   var backfilled = 0;
-  // 并发拉取（每品种独立 JSONP）
-  await Promise.all(needBackfill.map(function (sym) {
-    return fetchDailyKlineFromEastMoney(sym).then(function (klines) {
-      if (klines && klines.length) {
-        // 合并：保留已有快照 + 补充历史（按日期去重，已有的不覆盖）
-        var existing = acc.priceSnapshots[sym] || [];
-        var existingDates = {};
-        existing.forEach(function (s) { existingDates[s.date] = true; });
-        klines.forEach(function (k) {
-          if (!existingDates[k.date]) existing.push(k);
+  var degradedSymbols = []; // 数据不足但保留部分数据的品种
+  var failedSymbols = [];   // 完全拉不到数据的品种
+  // 分批拉取：每批最多 3 个品种，间隔 2 秒（降低并发防限流）
+  for (var batchStart = 0; batchStart < needBackfill.length; batchStart += 3) {
+    var batch = needBackfill.slice(batchStart, batchStart + 3);
+    // 每品种最多重试 2 次
+    for (var attempt = 0; attempt < 2; attempt++) {
+      var remaining = batch.filter(function (sym) { return failedSymbols.indexOf(sym) < 0; });
+      if (!remaining.length) break;
+      var batchResults = await Promise.all(remaining.map(function (sym) {
+        return fetchDailyKlineFromEastMoney(sym).then(function (klines) {
+          if (klines && klines.length) {
+            // 合并：保留已有快照 + 补充历史（按日期去重，已有的不覆盖）
+            var existing = acc.priceSnapshots[sym] || [];
+            var existingDates = {};
+            existing.forEach(function (s) { existingDates[s.date] = true; });
+            klines.forEach(function (k) {
+              if (!existingDates[k.date]) existing.push(k);
+            });
+            existing.sort(function (a, b) { return a.date.localeCompare(b.date); });
+            if (existing.length > 60) existing = existing.slice(existing.length - 60);
+            acc.priceSnapshots[sym] = existing;
+            backfilled++;
+            // 数据不足 20 条（新品种）标注为降级但不清零
+            if (existing.length < 20) degradedSymbols.push(sym);
+            return true;
+          } else {
+            // 空数组不算失败（可能该品种确实无历史 K 线），标记降级
+            degradedSymbols.push(sym);
+            return false;
+          }
+        }).catch(function () {
+          // 拉取异常，延迟后重试
+          return false;
         });
-        // 按日期排序后保留最近 60 条
-        existing.sort(function (a, b) { return a.date.localeCompare(b.date); });
-        if (existing.length > 60) existing = existing.slice(existing.length - 60);
-        acc.priceSnapshots[sym] = existing;
-        backfilled++;
+      }));
+      if (attempt === 0) {
+        // 首次失败：等待 1.5 秒后重试（仅对失败品种）
+        await new Promise(function (r) { setTimeout(r, 1500); });
+        remaining.forEach(function (sym, idx) {
+          if (!batchResults[idx]) failedSymbols.push(sym);
+        });
       }
-    });
-  }));
+    }
+    // 每批间隔 2s（最后一组不需要等）
+    if (batchStart + 3 < needBackfill.length) {
+      await new Promise(function (r) { setTimeout(r, 2000); });
+    }
+  }
   if (backfilled > 0) {
     saveState();
     console.log('[FT] 冷启动回补完成:', backfilled, '个品种');
+    var msg = '已回补 ' + backfilled + ' 个品种动量数据';
+    if (degradedSymbols.length > 0) {
+      msg += '（' + degradedSymbols.length + '个新品种数据不足，已用现有区间计算）';
+    }
+    if (failedSymbols.length > 0) {
+      msg += '（' + failedSymbols.length + '个品种暂无法回补，已跳过）';
+      console.warn('[FT] 回补失败品种:', failedSymbols.join(', '));
+    }
+    showToast(msg);
     // 回补后刷新信号矩阵
     if (window.FTRender && window.FTRender.refreshSignals) window.FTRender.refreshSignals();
   } else if (needBackfill.length > 0) {
-    console.warn('[FT] 冷启动回补全部失败:', needBackfill.join(', '));
-    showToast('⚠ 历史数据回补失败，动量因子暂不可用（' + needBackfill.length + '个品种）');
+    console.warn('[FT] 冷启动回补全部降级处理:', needBackfill.length, '个品种');
+    // 不弹"回补失败"——降级处理：品种数据不足不影响观察池显示
   }
 }
 
 // 东财日线 K 线拉取：返回 [{date, price}, ...]（price=收盘价）
-// 优先 fetch + CORS，失败回退 JSONP（双保险）
+// 优先 fetch + CORS，失败回退 JSONP（双保险）；最后兜底通过 Cloud Worker 代理
 function fetchDailyKlineFromEastMoney(symbol) {
   var secid = EASTMONEY_SYMBOL_MAP[symbol];
   if (!secid) return Promise.resolve([]);
-  var baseUrl = 'https://push2his.eastmoney.com/api/qt/stock/kline/get?ut=bd1d9ddb04089700cf9c27f6f7426281&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=0&end=20500101&lmt=30&secid=' + secid;
+  // lmt=60 取近 3 个月交易日（足够动量计算），新品种也可积累足够样本
+  var baseUrl = 'https://push2his.eastmoney.com/api/qt/stock/kline/get?ut=bd1d9ddb04089700cf9c27f6f7426281&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=0&end=20500101&lmt=60&secid=' + secid;
 
   // 解析东财 klines 格式: ["日期,开盘,收盘,最高,最低,成交量,成交额,振幅,涨跌幅,涨跌额,换手率", ...]
   function parseKlines(data) {

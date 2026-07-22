@@ -66,8 +66,8 @@
     FTApp.EXCHANGE_VARIETIES.forEach(function (v) {
       // 主力合约（EXCHANGE_VARIETIES 配置的真实月份）
       opts += '<option value="' + FTApp.escapeHtml(v.defaultContract) + '">' + FTApp.escapeHtml(v.symbol) + ' 主力</option>';
-      // 动态生成未来 6 个常见交割月候选（1/5/9 月为主，CZCE 用3位格式，其他用4位）
-      var isCZCE = v.exchange === 'CZCE';
+      // 动态生成未来 6 个常见交割月候选（1/5/9 月为主，CZCE/GFEX 用3位格式，其他用4位）
+      var is3DigitFmt = v.exchange === 'CZCE' || v.exchange === 'GFEX';
       var months = [9, 10, 11, 12, 1, 3, 5];
       var y = curY, m = curM;
       var count = 0;
@@ -76,11 +76,11 @@
         if (m > 12) { m = 1; y++; }
         if ([1,5,9,10].indexOf(m) >= 0) {
           var yPart4 = String(y).slice(2);          // 4位格式 '26'
-          var yPart3 = String(y).slice(3);           // CZCE 3位格式 '6'
+          var yPart3 = String(y).slice(3);           // 3位格式 '6'（CZCE/GFEX 用1位年）
           var mPart = (m < 10 ? '0' : '') + m;
-          var cc = isCZCE ? (v.code + yPart3 + mPart) : (v.code + yPart4 + mPart);
+          var cc = is3DigitFmt ? (v.code + yPart3 + mPart) : (v.code + yPart4 + mPart);
           if (cc !== v.defaultContract) {
-            opts += '<option value="' + FTApp.escapeHtml(cc) + '">' + FTApp.escapeHtml(v.symbol) + ' ' + (isCZCE ? yPart3 + mPart : yPart4 + mPart) + '</option>';
+            opts += '<option value="' + FTApp.escapeHtml(cc) + '">' + FTApp.escapeHtml(v.symbol) + ' ' + (is3DigitFmt ? yPart3 + mPart : yPart4 + mPart) + '</option>';
           }
           count++;
         }
@@ -272,11 +272,20 @@
       });
       // 合约候选 datalist：每个品种的主力 + 常见月份
       var dlOpts = '';
+      var now = new Date();
+      var curY = now.getFullYear();
       FTApp.EXCHANGE_VARIETIES.forEach(function (v) {
         dlOpts += '<option value="' + FTApp.escapeHtml(v.defaultContract) + '">';
-        // 追加近月/远月候选（基于品种 code）
+        // 追加近月/远月候选（CZCE/GFEX 用3位格式，其他用4位）
         var cd = v.code;
-        dlOpts += '<option value="' + cd + '2609"><option value="' + cd + '2610"><option value="' + cd + '2611"><option value="' + cd + '2612"><option value="' + cd + '2601">';
+        var is3D = v.exchange === 'CZCE' || v.exchange === 'GFEX';
+        var y4 = String(curY).slice(2);
+        var y3 = String(curY).slice(3);
+        if (is3D) {
+          dlOpts += '<option value="' + cd + y3 + '09"><option value="' + cd + y3 + '10"><option value="' + cd + y3 + '11"><option value="' + cd + y3 + '12"><option value="' + cd + y3 + '01">';
+        } else {
+          dlOpts += '<option value="' + cd + y4 + '09"><option value="' + cd + y4 + '10"><option value="' + cd + y4 + '11"><option value="' + cd + y4 + '12"><option value="' + cd + y4 + '01">';
+        }
       });
       var modal = document.createElement('div');
       modal.id = 'varietyPickerModal';

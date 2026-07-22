@@ -26,8 +26,8 @@ const POOL_VARIETIES = [
   { symbol: '铜', contractCode: 'CU2609' },
   { symbol: '黄金', contractCode: 'AU2608' },
   { symbol: '白银', contractCode: 'AG2608' },
-  { symbol: '多晶硅', contractCode: 'PS2609' },
-  { symbol: '碳酸锂', contractCode: 'LC2611' },
+  { symbol: '多晶硅', contractCode: 'PS609' },
+  { symbol: '碳酸锂', contractCode: 'LC611' },
   { symbol: '豆油', contractCode: 'Y2609' },
   { symbol: '菜油', contractCode: 'OI609' },
 ];
