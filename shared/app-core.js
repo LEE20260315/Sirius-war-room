@@ -6,7 +6,7 @@
 // APP_VERSION:语义版本号,变更 state 结构时手动递增(触发老用户 localStorage 迁移)
 // APP_BUILD_SHA:构建标识,理想情况下由 CI 注入 git short sha;当前手动维护为 'manual'
 // 未来如启用 GitHub Actions 部署,可在部署步骤用 sed 替换 APP_BUILD_SHA 占位符
-const APP_VERSION = '2026.07.19-v1';  // Sirius 期货作战室:state 账户隔离 + 云同步
+const APP_VERSION = '2026.07.19-v2';  // Sirius 期货作战室:state 账户隔离 + 云同步 + CZCE/GFEX 3位合约修复
 const APP_BUILD_SHA = 'manual';  // CI 注入占位符,手动部署时保持 'manual'
 
 // ============ DATA STORE ============
@@ -669,35 +669,46 @@ function setLastUpdateTime(ts) {
   if (el) el.textContent = '最近更新: ' + (ts || '--');
 }
 
-// === East Money JSONP single query ===
-function fetchPriceFromEastMoney(secid) {
+// === East Money JSONP single query（支持复合 secid 回退）===
+function fetchPriceFromEastMoney(secid, fallbackSecids) {
   return new Promise((resolve) => {
-    const cbName = '_em_cb_' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-    const timeout = setTimeout(() => { cleanup(); resolve(null); }, 7000);
+    var trySecid = function(secidToTry) {
+      const cbName = '_em_cb_' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+      const timeout = setTimeout(() => { cleanup(); tryNext(); }, 7000);
 
-    function cleanup() {
-      clearTimeout(timeout);
-      delete window[cbName];
-      const s = document.getElementById('emScript_' + cbName);
-      if (s) s.remove();
-    }
-
-    window[cbName] = function(data) {
-      cleanup();
-      if (!data) { resolve(null); return; }
-      const raw = data.data ? data.data.f43 : data.f43;
-      if (raw != null && String(raw) !== '-') {
-        const p = parseFloat(raw);
-        if (!isNaN(p) && p > 0) { resolve(p); return; }
+      function cleanup() {
+        clearTimeout(timeout);
+        delete window[cbName];
+        const s = document.getElementById('emScript_' + cbName);
+        if (s) s.remove();
       }
-      resolve(null);
-    };
 
-    const script = document.createElement('script');
-    script.id = 'emScript_' + cbName;
-    script.src = `https://push2.eastmoney.com/api/qt/stock/get?ut=bd1d9ddb04089700cf9c27f6f7426281&invt=2&fltt=2&fields=f43&secid=${secid}&cb=${cbName}`;
-    script.onerror = () => { cleanup(); resolve(null); };
-    document.head.appendChild(script);
+      function tryNext() {
+        if (fallbackSecids && fallbackSecids.length) {
+          trySecid(fallbackSecids.shift());
+        } else {
+          resolve(null);
+        }
+      }
+
+      window[cbName] = function(data) {
+        cleanup();
+        if (!data) { tryNext(); return; }
+        const raw = data.data ? data.data.f43 : data.f43;
+        if (raw != null && String(raw) !== '-') {
+          const p = parseFloat(raw);
+          if (!isNaN(p) && p > 0) { resolve(p); return; }
+        }
+        tryNext();
+      };
+
+      const script = document.createElement('script');
+      script.id = 'emScript_' + cbName;
+      script.src = `https://push2.eastmoney.com/api/qt/stock/get?ut=bd1d9ddb04089700cf9c27f6f7426281&invt=2&fltt=2&fields=f43&secid=${secidToTry}&cb=${cbName}`;
+      script.onerror = () => { cleanup(); tryNext(); };
+      document.head.appendChild(script);
+    };
+    trySecid(secid);
   });
 }
 
@@ -881,8 +892,18 @@ async function fetchPricesNow() {
     if (fetchStatusMap[c.symbol] === 'ok') return; // futsseapi 已成功
     const secid = EASTMONEY_SYMBOL_MAP[c.symbol];
     if (secid) {
+      // GFEX: 生成备用 secid（用实际合约代码尝试，因连续合约 ps 可能不可用）
+      var fallbacks = [];
+      if (c.exchange === 'GFEX' && c.contractCode) {
+        var meta = findVarietyMeta(c.symbol);
+        if (meta) {
+          var mc = FUTSSE_MARKET_MAP['GFEX']; // 8
+          var cc = c.contractCode.toLowerCase();
+          fallbacks.push(mc + '.' + cc); // e.g. 8.ps609
+        }
+      }
       emPending.push((async () => {
-        const p = await fetchPriceFromEastMoney(secid);
+        const p = await fetchPriceFromEastMoney(secid, fallbacks.length ? fallbacks : null);
         if (p) { c.price = p; fetchStatusMap[c.symbol] = 'ok'; emOk++; }
         else { emFail.push(c.symbol); }
       })());
