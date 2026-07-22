@@ -162,35 +162,50 @@ const CloudSync = {
       if (!FTApp.state.accounts) {
         FTApp.state.accounts = {sim: {trades:[],closedTrades:[],ledger:[],realTrades:[]}, real: {trades:[],closedTrades:[],ledger:[],realTrades:[]}};
       }
+      // 各表独立 try-catch，单表失败不影响整体
+      var syncErrors = [];
       // 拉实盘成交流水 → state.accounts.real.realTrades
-      const realTrades = await this._listRecords('real_trades');
-      if (realTrades && realTrades.length) {
-        FTApp.state.accounts.real.realTrades = realTrades.map(this._normalizeTradeRecord);
-        FTApp.saveState();
-      }
-      // 拉模拟成交流水 → 与本地 state.accounts.sim.trades 合并(以飞书 client_id 去重,飞书为准)
-      const simTrades = await this._listRecords('sim_trades');
-      if (simTrades && simTrades.length) {
-        this._mergeSimTrades(simTrades.map(this._normalizeTradeRecord));
-        FTApp.saveState();
-      }
-      // 拉资金账户流水 → state.accounts.sim.ledger / accounts.real.ledger
-      const ledger = await this._listRecords('account_ledger');
-      if (ledger && ledger.length) {
-        const real = [], sim = [];
-        ledger.forEach(r => {
-          const normalized = this._normalizeLedgerRecord(r);
-          const acc = normalized.account || (r.fields && r.fields.account) || r.account || 'sim';
-          if (acc === 'real' || acc === '实盘') real.push(normalized);
-          else sim.push(normalized);
-        });
-        FTApp.state.accounts.real.ledger = real;
-        FTApp.state.accounts.sim.ledger = sim;
-        FTApp.saveState();
-      }
+      try {
+        const realTrades = await this._listRecords('real_trades');
+        if (realTrades && realTrades.length) {
+          FTApp.state.accounts.real.realTrades = realTrades.map(this._normalizeTradeRecord);
+          FTApp.saveState();
+        }
+      } catch (e) { syncErrors.push('real_trades:' + e.message); }
+      // 拉模拟成交流水
+      try {
+        const simTrades = await this._listRecords('sim_trades');
+        if (simTrades && simTrades.length) {
+          this._mergeSimTrades(simTrades.map(this._normalizeTradeRecord));
+          FTApp.saveState();
+        }
+      } catch (e) { syncErrors.push('sim_trades:' + e.message); }
+      // 拉资金账户流水
+      try {
+        const ledger = await this._listRecords('account_ledger');
+        if (ledger && ledger.length) {
+          const real = [], sim = [];
+          ledger.forEach(r => {
+            const normalized = this._normalizeLedgerRecord(r);
+            const acc = normalized.account || (r.fields && r.fields.account) || r.account || 'sim';
+            if (acc === 'real' || acc === '实盘') real.push(normalized);
+            else sim.push(normalized);
+          });
+          FTApp.state.accounts.real.ledger = real;
+          FTApp.state.accounts.sim.ledger = sim;
+          FTApp.saveState();
+        }
+      } catch (e) { syncErrors.push('account_ledger:' + e.message); }
       this._state.lastSyncAt = Date.now();
-      this._state.lastError = null;
-      this.setStatus('online', '云同步: 已同步');
+      if (syncErrors.length) {
+        this._state.lastError = syncErrors.join('; ');
+        // 部分表失败仍视为半在线状态（行情缓存可用）
+        this.setStatus('online', '云同步: 已就绪(行情缓存)');
+        console.warn('[CloudSync] loadAll 部分表失败:', syncErrors.join(', '));
+      } else {
+        this._state.lastError = null;
+        this.setStatus('online', '云同步: 已同步');
+      }
       // 触发 UI 刷新
       if (window.FTRender) {
         if (FTRender.renderTrades) FTRender.renderTrades();
