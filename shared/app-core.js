@@ -344,6 +344,20 @@ function _migratePoolExchange(pool) {
   });
 }
 
+// 修补 pool 中缺失的 contractCode：从 EXCHANGE_VARIETIES 回填 defaultContract
+function _backfillContractCodes(pool) {
+  if (!Array.isArray(pool)) return;
+  pool.forEach(function(c) {
+    if (!c.contractCode) {
+      var m = findVarietyMeta(c.symbol);
+      if (m && m.defaultContract) {
+        c.contractCode = m.defaultContract;
+        console.log('[FT] 回填 contractCode:', c.symbol, '→', c.contractCode);
+      }
+    }
+  });
+}
+
 function loadState() {
   try {
     const s = localStorage.getItem('futures_tracker_state');
@@ -374,6 +388,9 @@ function loadState() {
         state.version = APP_VERSION;
         saveState();
       }
+      // 修补缺失的 contractCode：对 pool 中所有品种，若 contractCode 为空则回填 defaultContract
+      _backfillContractCodes(state.accounts.sim.pool);
+      _backfillContractCodes(state.accounts.real.pool);
       if (!state.lastBackup) state.lastBackup = null;
       if (!state.syncQueue) state.syncQueue = [];
     } else {

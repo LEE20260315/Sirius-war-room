@@ -205,6 +205,15 @@
           lastEx = ex;
         }
         var priceTxt = (c.price && c.price > 0) ? c.price.toFixed(2) : '--';
+        // 合约代码为空时从 meta 回填 defaultContract
+        var contractCode = c.contractCode || '';
+        if (!contractCode) {
+          var meta = FTApp.findVarietyMeta ? FTApp.findVarietyMeta(c.symbol) : null;
+          if (meta && meta.defaultContract) {
+            contractCode = meta.defaultContract;
+            c.contractCode = contractCode; // 回填到 pool，下次 saveState 时持久化
+          }
+        }
         // 层级标签：核心=橙底，观察=灰底
         var tier = c.tier || (FTApp.getVarietyTier ? FTApp.getVarietyTier(c.symbol) : '观察');
         var tierBadge = tier === '核心'
@@ -213,7 +222,7 @@
         html += '<tr>' +
           '<td class="py-2 px-3 text-ink">' + FTApp.escapeHtml(c.symbol) + '</td>' +
           '<td class="py-2 px-3">' + tierBadge + '</td>' +
-          '<td class="py-2 px-3"><input list="contractList" value="' + FTApp.escapeHtml(c.contractCode || '') + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="contract-input ' + CELL_INPUT + '" style="width:96px"></td>' +
+          '<td class="py-2 px-3"><input list="contractList" value="' + FTApp.escapeHtml(contractCode) + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="contract-input ' + CELL_INPUT + '" style="width:96px"></td>' +
           '<td class="py-2 px-3"><input type="number" value="' + (c.multiplier || 0) + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="mult-input ' + CELL_INPUT + '" style="width:72px"></td>' +
           '<td class="py-2 px-3"><input type="number" step="0.01" value="' + (c.marginRate || 0) + '" data-symbol="' + FTApp.escapeHtml(c.symbol) + '" class="margin-input ' + CELL_INPUT + '" style="width:72px"></td>' +
           '<td class="py-2 px-3 font-mono text-ink-secondary">' + priceTxt + '</td>' +
