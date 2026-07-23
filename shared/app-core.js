@@ -155,17 +155,17 @@ function validateContract(contractCode, varietySymbol) {
 
 // 预置观察池：8 个品种，合约为当前主力月份（2026-07，动态维护）
 const DEFAULT_COMMODITIES = [
-  {symbol:'棕榈油',contractCode:'P2609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'DCE',tier:'核心'},
-  {symbol:'白糖',contractCode:'SR609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE',tier:'核心'},
-  {symbol:'棉花',contractCode:'CF609',multiplier:5,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE',tier:'核心'},
-  {symbol:'天然橡胶',contractCode:'RU2609',multiplier:10,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'能源化工',exchange:'SHFE',tier:'核心'},
-  {symbol:'铜',contractCode:'CU2609',multiplier:5,marginRate:0.09,price:0,percentile:0,costLine:0,status:'bottom',category:'有色金属',exchange:'SHFE',tier:'核心'},
-  {symbol:'黄金',contractCode:'AU2608',multiplier:1000,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE',tier:'核心'},
-  {symbol:'白银',contractCode:'AG2608',multiplier:15,marginRate:0.10,price:0,percentile:0,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE',tier:'核心'},
-  {symbol:'多晶硅',contractCode:'PS609',multiplier:3,marginRate:0.12,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX',tier:'核心'},
-  {symbol:'碳酸锂',contractCode:'LC611',multiplier:1,marginRate:0.15,price:0,percentile:0,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX',tier:'核心'},
-  {symbol:'豆油',contractCode:'Y2609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'DCE',tier:'观察'},
-  {symbol:'菜油',contractCode:'OI609',multiplier:10,marginRate:0.08,price:0,percentile:0,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE',tier:'观察'}
+  {symbol:'棕榈油',contractCode:'P2609',multiplier:10,marginRate:0.08,price:0,percentile:null,costLine:0,status:'bottom',category:'农产品',exchange:'DCE',tier:'核心'},
+  {symbol:'白糖',contractCode:'SR609',multiplier:10,marginRate:0.08,price:0,percentile:null,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE',tier:'核心'},
+  {symbol:'棉花',contractCode:'CF609',multiplier:5,marginRate:0.08,price:0,percentile:null,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE',tier:'核心'},
+  {symbol:'天然橡胶',contractCode:'RU2609',multiplier:10,marginRate:0.12,price:0,percentile:null,costLine:0,status:'bottom',category:'能源化工',exchange:'SHFE',tier:'核心'},
+  {symbol:'铜',contractCode:'CU2609',multiplier:5,marginRate:0.09,price:0,percentile:null,costLine:0,status:'bottom',category:'有色金属',exchange:'SHFE',tier:'核心'},
+  {symbol:'黄金',contractCode:'AU2608',multiplier:1000,marginRate:0.08,price:0,percentile:null,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE',tier:'核心'},
+  {symbol:'白银',contractCode:'AG2608',multiplier:15,marginRate:0.10,price:0,percentile:null,costLine:0,status:'bottom',category:'贵金属',exchange:'SHFE',tier:'核心'},
+  {symbol:'多晶硅',contractCode:'PS609',multiplier:3,marginRate:0.12,price:0,percentile:null,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX',tier:'核心'},
+  {symbol:'碳酸锂',contractCode:'LC611',multiplier:1,marginRate:0.15,price:0,percentile:null,costLine:0,status:'bottom',category:'新能源',exchange:'GFEX',tier:'核心'},
+  {symbol:'豆油',contractCode:'Y2609',multiplier:10,marginRate:0.08,price:0,percentile:null,costLine:0,status:'bottom',category:'农产品',exchange:'DCE',tier:'观察'},
+  {symbol:'菜油',contractCode:'OI609',multiplier:10,marginRate:0.08,price:0,percentile:null,costLine:0,status:'bottom',category:'农产品',exchange:'CZCE',tier:'观察'}
 ];
 
 const FUND_DIMENSIONS = [

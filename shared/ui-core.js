@@ -609,8 +609,8 @@
       var html = '';
       var buyCount = 0;  // 含买入+加仓，用于健康度统计
       pool.forEach(function (c) {
-        var p = c.percentile || 0;
-        var hasPct = (p && p > 0);
+        var p = c.percentile;
+        var hasPct = (p != null && !isNaN(p) && p !== '');
 
         // ---- 估值因子 ----
         // 估值分（0-100）：低位=高分
