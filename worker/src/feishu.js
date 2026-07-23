@@ -318,3 +318,25 @@ export async function upsertRecord(env, tableId, record) {
   const created = await createRecord(env, tableId, record.fields);
   return { record: created.record, action: 'created' };
 }
+
+/**
+ * 查询外部多维表格记录（支持非本应用 app_token）
+ * @param {string} token - 已获取的 tenant_access_token
+ * @param {string} appToken - 外部多维表格 app_token
+ * @param {string} tableId - 表格 ID
+ * @param {Object} [opts] - { filter, pageSize, pageToken }
+ * @returns {Promise<Object>} - { items, page_token, has_more, total }
+ */
+export async function listExternalRecords(token, appToken, tableId, opts = {}) {
+  const url = new URL(`${FEISHU_BASE}/bitable/v1/apps/${appToken}/tables/${tableId}/records`);
+  if (opts.filter) url.searchParams.set("filter", opts.filter);
+  if (opts.pageSize) url.searchParams.set("page_size", String(opts.pageSize));
+  if (opts.pageToken) url.searchParams.set("page_token", opts.pageToken);
+  const resp = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=utf-8" },
+  });
+  if (!resp.ok) throw { code: "FEISHU_API_ERROR", message: `HTTP ${resp.status}` };
+  const body = await resp.json();
+  if (body.code !== 0) throw { code: "FEISHU_API_ERROR", message: body.msg || "飞书错误" };
+  return body.data;
+}

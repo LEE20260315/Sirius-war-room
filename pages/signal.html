@@ -202,6 +202,14 @@ document.addEventListener('DOMContentLoaded', async function() {
   await safeAsync('loadCostReference', function(){ return FTApp.loadCostReference(); });
   safe('ensurePercentileComputed', function(){ FTApp.ensurePercentileComputed(); });
   safeAsync('backfillPriceSnapshots', function(){ return FTApp.backfillPriceSnapshots(); });
+  await safeAsync('loadFundamentalFeed', async function() {
+    await FTRender.loadFundamentalFeed();
+    // 动态拉取飞书多维表格最新数据（有 Token 才触发）
+    if (FTApp.fetchFundamentalScores) {
+      await FTApp.fetchFundamentalScores();
+      FTRender.refreshSignals(); // 新数据到来后重算信号
+    }
+  });
   safe('initAutoRefresh', function(){ FTApp.initAutoRefresh(); });
   safe('initAutoBackup', function(){ FTApp.initAutoBackup(); });
   safe('updateBackupDisplay', function(){ FTApp.updateBackupDisplay(); });

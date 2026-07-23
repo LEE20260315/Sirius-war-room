@@ -1801,13 +1801,77 @@ function getCostReference(symbol) {
 }
 
 // 获取外部日报基本面综合分（0-100），无数据返回 null
+// 动态获取基本面分数：优先从 Worker 代理读取飞书多维表格最新数据，失败回退静态 JSON
+// 结果缓存到 window.__fundFeed（与静态加载共享同一变量）
+// 配置：从云同步设置中读取 Worker URL + token
+async function fetchFundamentalScores() {
+  var FUND_APP_TOKEN = 'Cxvob3GdTaEX2OspVWccfnWfnje';
+  var FUND_TABLE_ID = 'tblBxw2GPKuZx020';
+  
+  // 检查云同步是否已配置（需要 Worker URL + token）
+  var workerUrl = (window.CloudSync && CloudSync.config && CloudSync.config.serverUrl) || '';
+  var token = (window.CloudSync && CloudSync.config && CloudSync.config.accessToken) || '';
+  if (!workerUrl || !token) {
+    console.log('[FT] 云同步未配置，跳过动态基本面获取，仅使用静态 JSON');
+    return null;
+  }
+  
+  try {
+    var url = workerUrl.replace(/\/+$/, '') + '/api/fundamental/scores'
+      + '?app_token=' + encodeURIComponent(FUND_APP_TOKEN)
+      + '&table_id=' + encodeURIComponent(FUND_TABLE_ID);
+    var resp = await fetch(url, {
+      headers: { 'X-Sirius-Token': token },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var body = await resp.json();
+    if (!body.data || !body.data.scores) throw new Error('无效响应');
+    var scores = body.data.scores;
+    var date = body.data.date;
+    
+    // 构建与 fundamental-feed.json 兼容的结构并合并到 window.__fundFeed
+    var varieties = {};
+    Object.keys(scores).forEach(function(variety) {
+      varieties[variety] = { score: scores[variety], level: null, change: null };
+    });
+    
+    // 如果已有静态数据，合并（动态优先）；否则新建
+    if (!window.__fundFeed || !window.__fundFeed.records) {
+      window.__fundFeed = { source: 'dynamic', exportedAt: new Date().toISOString(), recordCount: 1, records: [] };
+    }
+    // 在 records 头部插入最新动态数据
+    window.__fundFeed.records.unshift({
+      date: date,
+      weekday: '',
+      summary: '从飞书多维表格动态加载',
+      signalChange: '',
+      anomalyAlert: '',
+      dataStatus: '正常',
+      fullReport: '',
+      varieties: varieties
+    });
+    window.__fundFeed._dynamicDate = date;
+    window.__fundFeed._dynamicFetchedAt = new Date().toISOString();
+    
+    console.log('[FT] 动态基本面已加载:', date, Object.keys(varieties).length, '个品种');
+    return scores;
+  } catch (e) {
+    console.warn('[FT] 动态基本面获取失败，回退静态 JSON:', e.message);
+    return null;
+  }
+}
+
 // 数据源：window.__fundFeed（由 fundamental-feed.json 加载）
 function getFundamentalComposite(symbol) {
   var feed = window.__fundFeed;
   if (!feed || !feed.records || !feed.records.length) return null;
   var feishuName = (PROJECT_TO_FEISHU_MAP && PROJECT_TO_FEISHU_MAP[symbol]) || symbol;
-  var v = feed.records[0].varieties && feed.records[0].varieties[feishuName];
-  if (v && v.score != null && v.score > 0) return v.score;
+  // 遍历 records，取最新的有效数据（动态数据在索引0）
+  for (var i = 0; i < feed.records.length; i++) {
+    var v = feed.records[i].varieties && feed.records[i].varieties[feishuName];
+    if (v && v.score != null && v.score > 0) return v.score;
+  }
   return null;
 }
 
@@ -2109,7 +2173,7 @@ window.FTApp = {
   computePercentile, getCostReference, loadPriceHistory, loadCostReference,
   ensurePercentileComputed, getEffectiveFundScore, getFundamentalComposite,
   // 动态百分位
-  refreshAllPercentileData, isPercentileDataInsufficient, isPercentileStaticFallback, loadPercentileCache,
+  refreshAllPercentileData, isPercentileDataInsufficient, isPercentileStaticFallback, loadPercentileCache, fetchFundamentalScores,
   // 动量因子
   recordPriceSnapshot, computeMomentum, backfillPriceSnapshots,
   // 资金曲线

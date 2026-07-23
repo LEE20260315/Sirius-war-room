@@ -7,6 +7,8 @@ import { json, error } from './response.js';
 import {
   listRecords,
   createRecord,
+  getTenantAccessToken,
+  listExternalRecords,
   batchCreateRecords,
   updateRecord,
   deleteRecord,
@@ -462,6 +464,41 @@ export async function router(req, env, ctx) {
       200,
       env
     );
+  }
+
+
+  // GET /api/fundamental/scores — 查询外部基本面多维表格，返回各品种综合分
+  // ?app_token=Cxvob3GdTaEX2OspVWccfnWfnje&table_id=tblBxw2GPKuZx020
+  if (path === '/api/fundamental/scores' && method === 'GET') {
+    const appToken = url.searchParams.get('app_token');
+    const tableId = url.searchParams.get('table_id');
+    if (!appToken || !tableId) {
+      return error('INVALID_PARAMS', '缺少 app_token 或 table_id', 400, null, env);
+    }
+    try {
+      const token = await getTenantAccessToken(env);
+      const data = await listExternalRecords(token, appToken, tableId, { pageSize: 5 });
+      const items = data.items || [];
+      if (!items.length) return json({ code: 'OK', data: { scores: {}, date: null } }, 200, env);
+      const latest = items[0].fields;
+      const scoreKeys = Object.keys(latest).filter(k => k.endsWith('_分数'));
+      const scores = {};
+      scoreKeys.forEach(k => {
+        const variety = k.replace('_分数', '');
+        const val = latest[k];
+        scores[variety] = (val != null && !isNaN(val)) ? Math.round(val * 10) / 10 : null;
+      });
+      const dateVal = latest['日期'];
+      let dateStr = null;
+      if (dateVal && typeof dateVal === 'number') {
+        dateStr = new Date(dateVal).toISOString().slice(0, 10);
+      } else if (typeof dateVal === 'string') {
+        dateStr = dateVal.slice(0, 10);
+      }
+      return json({ code: 'OK', data: { scores, date: dateStr } }, 200, env);
+    } catch (e) {
+      return error('FEISHU_API_ERROR', `基本面查询失败: ${e.message || e}`, 502, null, env);
+    }
   }
 
   // 未匹配任何路由
