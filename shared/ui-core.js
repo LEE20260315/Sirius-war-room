@@ -90,10 +90,10 @@
   }
 
   // 分位%单元格：数值 + mini-bar（颜色：≤25绿/≤50黄/≤75橙/>75红）
-  // symbol 参数用于区分"价格为0（行情未拉到）"与"price-history.json 未收录（暂无历史）"
+  // symbol 参数用于区分"价格为0（行情未拉到）"与无历史数据/数据不足
   function renderPercentileCell(pct, symbol) {
     if (pct == null) {
-      // 进一步区分：若 priceHistory 已加载但本品种无记录 → "暂无历史"
+      // 检查品种是否有价格（行情是否拉到）
       if (symbol && FTApp.priceHistory) {
         var ph = typeof FTApp.priceHistory === 'function' ? FTApp.priceHistory() : FTApp.priceHistory;
         if (ph && ph.records) {
@@ -101,16 +101,24 @@
           if (!rec) return '<span class="text-xs text-ink-faint italic">暂无历史</span>';
         }
       }
+      // 检查动态百分位缓存是否标记为数据不足（上市不满3年）
+      if (FTApp.isPercentileDataInsufficient && FTApp.isPercentileDataInsufficient(symbol)) {
+        return '<span class="text-xs text-warning italic" title="上市不足3年（<500个交易日），数据不足">样本不足3年</span>';
+      }
       return '<span class="text-ink-muted">--</span>';
     }
-    // pct === 0 是有效值（现价≤3年低点），不与 null 混淆
+    // 检查数据是否来自旧静态文件且品种可能不足3年
+    var insufficient = (FTApp.isPercentileDataInsufficient && FTApp.isPercentileDataInsufficient(symbol));
+    // 检查是否是动态数据未加载完成的静态预填充
+    var isStaticFallback = (FTApp.isPercentileStaticFallback && FTApp.isPercentileStaticFallback(symbol));
+    // pct === 0 是有效值（现价≤历史低点），不与 null 混淆
     if (pct === 0) {
       return '<div style="display:flex;align-items:center;gap:4px">' +
         '<span class="font-mono text-xs" style="color:#8ca06f">0</span>' +
         '<div style="width:40px;height:6px;background:#2a2823;border-radius:3px;overflow:hidden">' +
           '<div style="width:0%;height:100%;background:#8ca06f"></div>' +
         '</div>' +
-        '<span class="text-xs text-ink-faint" title="现价已跌破3年低点">↘</span>' +
+        (insufficient ? '<span class="text-xs text-warning" title="上市不足3年，数据有限">⚠样本不足3年</span>' : '<span class="text-xs text-ink-faint" title="现价已跌破历史低点">↘</span>') +
       '</div>';
     }
     var color = pct <= 25 ? '#8ca06f' : (pct <= 50 ? '#d4b656' : (pct <= 75 ? '#e08d6f' : '#ef4444'));
@@ -119,6 +127,8 @@
       '<div style="width:40px;height:6px;background:#2a2823;border-radius:3px;overflow:hidden">' +
         '<div style="width:' + pct + '%;height:100%;background:' + color + '"></div>' +
       '</div>' +
+      (insufficient ? ' <span class="text-xs text-warning" title="上市不足3年（<500个交易日），数据有限">⚠样本不足3年</span>' : '') +
+      (isStaticFallback ? ' <span class="text-xs text-ink-faint" title="动态数据加载中，当前显示为静态估算">~静态</span>' : '') +
     '</div>';
   }
 
@@ -642,10 +652,17 @@
 
         // ---- 趋势过滤评级规则（按优先级判定）----
         var rate, rateLight;
+        // 极低位左侧观察标志（独立于右侧买入纪律）
+        var extremeLowFlag = false;
+        if (hasPct && p < 10 && (momStatus === 'down' || momStatus === 'unknown' || extFundScore == null || extFundScore < 40)) {
+          extremeLowFlag = true;  // 极端低位但动量/基本面未确认 → 可探索底仓，不叫买入
+        }
         if (hasPct && p > 75) {
           rate = '回避'; rateLight = 'red';
-        } else if (hasPct && p <= 25 && momStatus === 'down') {
+        } else if (hasPct && p <= 25 && momStatus === 'down' && !extremeLowFlag) {
           rate = '观望'; rateLight = 'yellow';  // 低位 + 仍在下跌 → 不抄底
+        } else if (extremeLowFlag) {
+          rate = '⚡极端低位'; rateLight = 'yellow';
         } else if (hasPct && p <= 25 && (momStatus === 'up' || momStatus === 'flat') && composite >= 70 && !factorMissing) {
           rate = '买入'; rateLight = 'green';
         } else if (hasPct && p <= 35 && momStatus !== 'down' && composite >= 60 && !factorMissing) {
@@ -671,7 +688,7 @@
         var verifyTag = factorMissing ? ' <span class="text-xs text-ink-faint">(待验证)</span>' : '';
 
         // ---- 详情列文案 ----
-        var valStr = hasPct ? ('估值' + p + '%') : '估值无数据';
+        var valStr = hasPct ? ('估值' + p + '%' + (extremeLowFlag ? ' ⚡极低位' : '')) : '估值无数据';
         var momStr;
         if (momStatus === 'unknown') {
           momStr = '动量待积累(' + mom.samples + '/20)';
@@ -682,7 +699,9 @@
         }
         var fundStr = extFundScore != null ? ('基本面外部' + extFundScore.toFixed(0) + '分') : '基本面无外部数据';
         var extraStr = (hasPct && p <= 25 && momStatus === 'down') ? '，逆势不抄底' : '';
-        if (rate === '关注') {
+        if (rate === '⚡极端低位') {
+          extraStr += '，可探索底仓（左侧观察，非买入建议）';
+        } else if (rate === '关注') {
           if (extFundScore == null) {
             extraStr += '，仅估值触发（基本面缺失）';
           } else {
@@ -717,7 +736,7 @@
           '<td class="py-2 px-4">' + lightHtml(valLight) + '</td>' +
           '<td class="py-2 px-4">' + lightHtml(momLight) + '</td>' +
           '<td class="py-2 px-4">' + lightHtml(fundLight) + '</td>' +
-          '<td class="py-2 px-4"><span class="px-2 py-0.5 rounded text-xs font-medium ' + rateCls + '">' + rate + '</span>' + verifyTag + '</td>' +
+          '<td class="py-2 px-4"><span class="px-2 py-0.5 rounded text-xs font-medium ' + (rate === '⚡极端低位' ? 'text-warning' : rateCls) + '"' + (rate === '⚡极端低位' ? ' style="background:rgba(253,216,53,0.12);border:1px solid #fdd835"' : '') + '>' + rate + '</span>' + verifyTag + '</td>' +
           '<td class="py-2 px-4 text-xs text-ink-dim">' + FTApp.escapeHtml(detail) + '</td>' +
           '</tr>';
       });

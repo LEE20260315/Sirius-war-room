@@ -6,7 +6,7 @@
 // APP_VERSION:语义版本号,变更 state 结构时手动递增(触发老用户 localStorage 迁移)
 // APP_BUILD_SHA:构建标识,理想情况下由 CI 注入 git short sha;当前手动维护为 'manual'
 // 未来如启用 GitHub Actions 部署,可在部署步骤用 sed 替换 APP_BUILD_SHA 占位符
-const APP_VERSION = '2026.07.19-v2';  // Sirius 期货作战室:state 账户隔离 + 云同步 + CZCE/GFEX 3位合约修复
+const APP_VERSION = '2026.07.19-v2';  // Sirius 期货作战室 v0.23:动态百分位系统 + 左侧极端低位信号 + 云同步 key 统一
 const APP_BUILD_SHA = 'manual';  // CI 注入占位符,手动部署时保持 'manual'
 
 // ============ DATA STORE ============
@@ -538,7 +538,8 @@ function handleImport(e) {
         showToast('导入失败：数据格式不正确');
         return;
       }
-      state = {...state, ...data};
+      // 用 Object.assign 保留 state 引用（避免 FTApp.state 指向旧对象）
+      Object.assign(state, data);
       saveState();
       showToast('数据已导入，刷新页面');
       setTimeout(()=>location.reload(), 1000);
@@ -549,6 +550,23 @@ function handleImport(e) {
 
 function validateImportData(data) {
   if (!data || typeof data !== 'object') return false;
+  // 新账户隔离结构（Sirius v2+）
+  if (data.accounts) {
+    if (typeof data.accounts !== 'object') return false;
+    var sim = data.accounts.sim;
+    if (sim) {
+      if (sim.pool && !Array.isArray(sim.pool)) return false;
+      if (sim.trades && !Array.isArray(sim.trades)) return false;
+      if (sim.closedTrades && !Array.isArray(sim.closedTrades)) return false;
+      if (sim.journal && !Array.isArray(sim.journal)) return false;
+      if (sim.equityHistory && !Array.isArray(sim.equityHistory)) return false;
+      if (sim.rolloverHistory && !Array.isArray(sim.rolloverHistory)) return false;
+      if (sim.fundamentals && typeof sim.fundamentals !== 'object') return false;
+    }
+    if (data.settings && typeof data.settings !== 'object') return false;
+    return true;
+  }
+  // 兼容旧扁平结构
   if (data.pool && !Array.isArray(data.pool)) return false;
   if (data.trades && !Array.isArray(data.trades)) return false;
   if (data.closedTrades && !Array.isArray(data.closedTrades)) return false;
@@ -965,6 +983,8 @@ async function fetchPricesNow() {
         recordPriceSnapshot(c.symbol, c.price);
       }
     });
+    // 异步刷新百分位数据（静默，不阻塞行情刷新）
+    refreshAllPercentileData();
     saveState();
     if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool();
     onPriceUpdate();
@@ -1189,17 +1209,22 @@ function populateFundSelect() {
 }
 
 // 静态数据缓存（init 时异步加载，不阻塞渲染）
-let priceHistory = null;  // {records: [...], updated, source}
+// 注：price-history.json 已废弃，百分位改为动态从东财近3年K线计算；保留 priceHistory 变量供兼容
+let priceHistory = null;  // 已废弃：百分位不再依赖此静态文件，改用动态K线计算
 let costReference = null; // {records: [...], updated, source}
+// 动态百分位数据缓存（独立 localStorage key，不进入 state 序列化，避免 saveState 膨胀）
+let percentileCache = null; // { [symbol]: { closes:[sorted], updated:ISO, insufficient:bool } }
 
 async function loadPriceHistory() {
   try {
     const resp = await fetch('../shared/price-history.json');
     if (!resp.ok) throw new Error('http ' + resp.status);
     priceHistory = await resp.json();
-    console.log('[FT] 历史价格区间加载成功:', priceHistory.records.length, '个品种');
+    console.log('[FT] 历史价格区间加载成功（已废弃，仅兼容）:', priceHistory.records.length, '个品种');
+    // priceHistory 加载后，预计算百分位（之前的 renderPool 可能因 priceHistory 未到位而跳过预填充）
+    if (typeof ensurePercentileComputed === 'function') { ensurePercentileComputed(); if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool(); if (window.FTRender && window.FTRender.refreshSignals) window.FTRender.refreshSignals(); }
   } catch(e) {
-    console.warn('[FT] 历史价格区间加载失败:', e.message);
+    console.warn('[FT] 历史价格区间加载失败（已废弃）:', e.message);
     priceHistory = null;
   }
 }
@@ -1216,15 +1241,242 @@ async function loadCostReference() {
   }
 }
 
-// 百分位计算：基于近3年价格区间，(price-low)/(high-low)*100，钳制[0,100]
+// ============ 动态百分位：从东财近3年K线计算真实统计分位 ============
+// 存储结构：localStorage key 'futures_percentile_data' → { [symbol]: { closes:[sorted], updated, insufficient } }
+// closes 是升序排列的收盘价数组，insufficient 表示上市不满3年（<500个交易日）
+const PERCENTILE_STORAGE_KEY = 'futures_percentile_data';
+const PERCENTILE_MIN_DAYS = 500;  // 不足500个交易日标记"数据不足"
+
+function loadPercentileCache() {
+  try {
+    var raw = localStorage.getItem(PERCENTILE_STORAGE_KEY);
+    if (raw) percentileCache = JSON.parse(raw);
+    else percentileCache = {};
+  } catch(e) {
+    console.warn('[FT] 百分位缓存加载失败:', e);
+    percentileCache = {};
+  }
+}
+
+function savePercentileCache() {
+  try {
+    localStorage.setItem(PERCENTILE_STORAGE_KEY, JSON.stringify(percentileCache || {}));
+  } catch(e) {
+    console.warn('[FT] 百分位缓存保存失败:', e);
+  }
+}
+
+// 获取品种东财 secid（复用 EASTMONEY_SYMBOL_MAP）
+function getEastMoneySecid(symbol) {
+  return EASTMONEY_SYMBOL_MAP[symbol] || null;
+}
+
+// 从东财日线K线接口拉取近3年（1000条上限）收盘价，用于百分位计算
+// 返回 { closes: [sorted], updated, insufficient: bool } 或 null
+async function fetchPercentileKlinesFromEastMoney(symbol) {
+  var secid = getEastMoneySecid(symbol);
+  if (!secid) { console.warn('[FT] 百分位K线: ' + symbol + ' 无secid映射'); return null; }
+  // lmt=1000 取约4年交易日（足够覆盖3年约750天），东财接口上限约1000
+  var url = 'https://push2his.eastmoney.com/api/qt/stock/kline/get?ut=bd1d9ddb04089700cf9c27f6f7426281&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=0&end=20500101&lmt=1000&secid=' + secid;
+
+  function parseCloses(data) {
+    if (!data || !data.data || !data.data.klines) return null;
+    var closes = [];
+    data.data.klines.forEach(function(line) {
+      var parts = line.split(',');
+      if (parts.length >= 3) {
+        var close = parseFloat(parts[2]);
+        if (!isNaN(close) && close > 0) closes.push(close);
+      }
+    });
+    if (!closes.length) return null;
+    // 升序排列
+    closes.sort(function(a, b) { return a - b; });
+    // 标记数据不足
+    var insufficient = closes.length < PERCENTILE_MIN_DAYS;
+    console.log('[FT] 百分位K线:', symbol, closes.length, '个交易日' + (insufficient ? ' (数据不足)' : ''));
+    return { closes: closes, updated: new Date().toISOString(), insufficient: insufficient };
+  }
+
+  // fetch + CORS
+  try {
+    var resp = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var data = await resp.json();
+    var result = parseCloses(data);
+    if (result) return result;
+  } catch(e) {
+    console.warn('[FT] 百分位K线fetch失败:', symbol, e.message, '→ 回退JSONP');
+  }
+
+  // JSONP 回退
+  return new Promise(function(resolve) {
+    var cbName = '_pct_cb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    var timeout = setTimeout(function() { cleanup(); resolve(null); }, 12000);
+    function cleanup() {
+      clearTimeout(timeout);
+      delete window[cbName];
+      var s = document.getElementById('pctScript_' + cbName);
+      if (s) s.remove();
+    }
+    window[cbName] = function(data) {
+      cleanup();
+      var result = parseCloses(data);
+      resolve(result);
+    };
+    var script = document.createElement('script');
+    script.id = 'pctScript_' + cbName;
+    script.src = url + '&cb=' + cbName;
+    script.onerror = function() { cleanup(); resolve(null); };
+    document.head.appendChild(script);
+  });
+}
+
+// 批量刷新所有品种的百分位数据（异步，不阻塞UI）
+// 优先走云端K线缓存（Worker 已缓存近3年数据），失败回退直连
+async function refreshAllPercentileData() {
+  if (!percentileCache) loadPercentileCache();
+  if (!percentileCache) percentileCache = {};
+  var acc = getCurrentAccount();
+  if (!acc.pool || !acc.pool.length) return;
+
+  var symbols = acc.pool.map(function(c) { return c.symbol; });
+  // 检查哪些品种的缓存已过期（超过24小时）或缺失
+  var now = Date.now();
+  var staleSymbols = [];
+  symbols.forEach(function(sym) {
+    var cached = percentileCache[sym];
+    if (!cached || !cached.closes || !cached.updated) {
+      staleSymbols.push(sym);
+    } else {
+      var age = now - new Date(cached.updated).getTime();
+      if (age > 24 * 60 * 60 * 1000) staleSymbols.push(sym);
+    }
+  });
+
+  if (!staleSymbols.length) {
+    console.log('[FT] 百分位数据全部新鲜，跳过刷新');
+    return;
+  }
+  console.log('[FT] 刷新百分位数据:', staleSymbols.length, '个品种:', staleSymbols.join(', '));
+
+  // 优先从云端 Worker 批量获取（无 CORS 限制，服务端已缓存）
+  var cloudSuccess = false;
+  if (window.CloudSync && CloudSync.config.enabled) {
+    try {
+      var cloudResult = await CloudSync.fetchCachedKlines();
+      var cloudKlines = cloudResult.klines || {};
+      var cloudHit = 0;
+      staleSymbols.forEach(function(sym) {
+        var kdata = cloudKlines[sym];
+        if (kdata && kdata.klines && kdata.klines.length) {
+          var closes = kdata.klines.map(function(k) { return k.price; }).filter(function(p) { return p > 0; });
+          if (closes.length > 0) {
+            closes.sort(function(a, b) { return a - b; });
+            percentileCache[sym] = {
+              closes: closes,
+              updated: new Date().toISOString(),
+              insufficient: closes.length < PERCENTILE_MIN_DAYS
+            };
+            // 清除静态标记，改用动态数据
+            delete percentileCache[sym].fallback;
+            cloudHit++;
+          }
+        }
+      });
+      if (cloudHit > 0) {
+        savePercentileCache();
+        cloudSuccess = true;
+        console.log('[FT] 云端百分位数据:', cloudHit, '个品种');
+        staleSymbols = staleSymbols.filter(function(sym) { return !percentileCache[sym] || !percentileCache[sym].closes; });
+      }
+    } catch(e) {
+      console.warn('[FT] 云端百分位获取失败，回退直连:', e.message);
+    }
+  }
+
+  if (!staleSymbols.length) return;
+
+  // 直连：分批拉取，每批3个，间隔2秒（降低并发防限流）
+  showToast('正在刷新' + staleSymbols.length + '个品种的历史分位数据...');
+  var fetched = 0;
+  for (var i = 0; i < staleSymbols.length; i += 3) {
+    var batch = staleSymbols.slice(i, i + 3);
+    var batchResults = await Promise.all(batch.map(function(sym) {
+      return fetchPercentileKlinesFromEastMoney(sym).then(function(result) {
+        if (result && result.closes && result.closes.length) {
+          percentileCache[sym] = result;
+          // 清除静态标记，改用动态数据
+          delete percentileCache[sym].fallback;
+          return true;
+        }
+        return false;
+      }).catch(function() { return false; });
+    }));
+    fetched += batchResults.filter(Boolean).length;
+    if (i + 3 < staleSymbols.length) {
+      await new Promise(function(r) { setTimeout(r, 2000); });
+    }
+  }
+
+  if (fetched > 0) {
+    savePercentileCache();
+    acc.pool.forEach(function(c) {
+      if (c.price && c.price > 0) {
+        var pct = computePercentile(c.symbol, c.price);
+        if (pct !== null) c.percentile = pct;
+      }
+    });
+    saveState();
+    if (window.FTRender && window.FTRender.renderPool) window.FTRender.renderPool();
+    if (window.FTRender && window.FTRender.refreshSignals) window.FTRender.refreshSignals();
+    showToast('已刷新' + fetched + '个品种的历史分位');
+    console.log('[FT] 百分位直连刷新完成:', fetched, '个品种');
+  } else if (!cloudSuccess) {
+    console.warn('[FT] 百分位全部刷新失败，保留旧缓存');
+  }
+}
+
+// 百分位计算：基于近3年K线收盘价的真实统计分位
+// percentile = "现价高于历史上多少%的交易日收盘价"
 // 无历史数据返回 null（UI 显示 -- 而非 0）
+// 现价超出历史范围时自动扩展（高于最高=100%，低于最低=0%）
+// 数据不足品种正常计算但不影响结果（仅 insufficient 标志告知UI标注）
 function computePercentile(symbol, price) {
-  if (!priceHistory || !priceHistory.records || !price || price <= 0) return null;
-  const rec = priceHistory.records.find(r => r.symbol === symbol);
-  if (!rec || !rec.low || !rec.high || rec.high <= rec.low) return null;
-  let pct = (price - rec.low) / (rec.high - rec.low) * 100;
-  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  if (!symbol || !price || price <= 0) return null;
+  if (!percentileCache) loadPercentileCache();
+  if (!percentileCache) return null;
+  var data = percentileCache[symbol];
+  if (!data || !data.closes || !data.closes.length) return null;
+  var closes = data.closes;
+  var n = closes.length;
+  // 二分查找：统计有多少个收盘价低于当前价格
+  var lo = 0, hi = n;
+  while (lo < hi) {
+    var mid = (lo + hi) >>> 1;
+    if (closes[mid] < price) lo = mid + 1;
+    else hi = mid;
+  }
+  // lo = 第一个 >= price 的索引，即低于 price 的数量
+  var below = lo;
+  var pct = Math.round((below / n) * 100);
   return pct;
+}
+
+// 检查品种百分位数据是否不足（供UI标注）
+function isPercentileDataInsufficient(symbol) {
+  if (!percentileCache) loadPercentileCache();
+  if (!percentileCache) return false;
+  var data = percentileCache[symbol];
+  return data && data.insufficient === true;
+}
+
+// 检查品种百分位是否来自静态预填充（动态数据尚未加载完成，数值可能不准确）
+function isPercentileStaticFallback(symbol) {
+  if (!percentileCache) loadPercentileCache();
+  if (!percentileCache) return false;
+  var data = percentileCache[symbol];
+  return data && data.fallback === true;
 }
 
 // ============ MOMENTUM FACTOR (动量因子) ============
@@ -1502,10 +1754,38 @@ function computeMomentum(symbol) {
 
 // 预计算百分位：在 renderPool/refreshSignals 之前调用，用存储价格更新所有品种的 percentile
 // 解决"不点刷新行情百分位就为0"的问题
+// 动态K线优先；若 percentileCache 为空则从旧 price-history.json 预填充（静态度量，标注 fallback）
 function ensurePercentileComputed() {
-  if (!priceHistory || !priceHistory.records) return;
   const acc = getCurrentAccount();
   if (!acc.pool || !acc.pool.length) return;
+  if (!percentileCache) loadPercentileCache();
+  if (!percentileCache) percentileCache = {};
+
+  // 预填充：当 percentileCache 缺少品种数据时，从 priceHistory 生成合成数据
+  if (priceHistory && priceHistory.records) {
+    acc.pool.forEach(function(c) {
+      if (c.price && c.price > 0 && (!percentileCache[c.symbol] || !percentileCache[c.symbol].closes || !percentileCache[c.symbol].closes.length)) {
+        var rec = priceHistory.records.find(function(r) { return r.symbol === c.symbol; });
+        if (rec && rec.low && rec.high && rec.high > rec.low && rec.low > 0) {
+          // 生成200步合成价格（均匀分布 low→high），与旧 min-max 结果一致
+          var step = (rec.high - rec.low) / 200;
+          if (step <= 0) step = 1;
+          var synthetic = [];
+          for (var p = rec.low; p <= rec.high + step / 2; p += step) {
+            synthetic.push(p);
+          }
+          percentileCache[c.symbol] = {
+            closes: synthetic,
+            updated: null,
+            insufficient: null,  // 未知，由动态刷新确定
+            fallback: true       // 标记为静态预填充
+          };
+        }
+      }
+    });
+  }
+
+  // 计算百分位（优先动态数据，其次预填充数据）
   acc.pool.forEach(function(c) {
     if (c.price && c.price > 0) {
       var pct = computePercentile(c.symbol, c.price);
@@ -1638,7 +1918,7 @@ function saveCloudSyncConfig() {
   if (!proxyUrl || !accessToken) { showToast('请填写代理地址和访问口令'); return; }
   // 持久化到 localStorage / sessionStorage,cloud-sync.js configure 内部会读
   localStorage.setItem('ft_proxy_base', proxyUrl);
-  sessionStorage.setItem('ft_access_token', accessToken);
+  FTApp.saveSecure('sirius_token', accessToken); // unified key with cloud-sync.js
   showToast('配置已保存,正在重新初始化云同步...');
   // ② 保存成功后立即调用 CloudSync.reinit() 重新初始化连接(无需手动刷新页面)
   if (window.CloudSync && CloudSync.reinit) {
@@ -1732,6 +2012,8 @@ function init() {
   const theme = localStorage.getItem('futures_theme');
   if (theme) document.documentElement.setAttribute('data-theme', theme);
   loadState();
+  // 加载动态百分位缓存（独立 localStorage key，不阻塞渲染）
+  loadPercentileCache();
   // 异步加载历史价格区间和成本参考（不阻塞渲染）
   loadPriceHistory();
   loadCostReference();
@@ -1762,6 +2044,8 @@ function init() {
   // 冷启动回补：若品种快照不足 20 条，从东财日线接口拉取近 30 日历史收盘价
   // 异步执行不阻塞 init，回补完成后自动刷新信号矩阵
   backfillPriceSnapshots();
+  // 异步刷新百分位数据（从东财近3年K线计算真实分位），不阻塞 init
+  refreshAllPercentileData();
 
   // listen for storage changes from other tabs
   window.addEventListener('storage', (e) => {
@@ -1824,6 +2108,8 @@ window.FTApp = {
   // 百分位/成本参考
   computePercentile, getCostReference, loadPriceHistory, loadCostReference,
   ensurePercentileComputed, getEffectiveFundScore, getFundamentalComposite,
+  // 动态百分位
+  refreshAllPercentileData, isPercentileDataInsufficient, isPercentileStaticFallback, loadPercentileCache,
   // 动量因子
   recordPriceSnapshot, computeMomentum, backfillPriceSnapshots,
   // 资金曲线

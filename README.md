@@ -1,4 +1,4 @@
-# Sirius 期货作战室
+# Sirius 期货作战室 v0.23
 
 > 起始 15,000 → 目标 1,000,000 — 模拟盘与实盘一体化、飞书多维表格云端存储的个人期货交易系统。
 >
@@ -6,6 +6,8 @@
 
 ## 特性
 
+- **动态百分位系统(v0.23)**:废弃静态 price-history.json 的 min-max 区间%,改为从东财近3年日线K线实时回补,用**真实统计分位**(现价高于历史上多少%交易日的收盘价)替代静态区间位置。上市不足3年品种自动标注「样本不足3年」。
+- **左侧观察信号(v0.23)**:信号引擎新增"⚡极端低位"独立标志(分位<10% + 动量/基本面未确认),右侧买入纪律不变,左侧提供底仓探索参考。
 - **双账户隔离**:模拟盘 / 实盘独立切换,数据互不污染
 - **云端存储**:基于飞书多维表格 + Cloudflare Workers 代理,换浏览器不丢数据
 - **云端行情缓存**:通过 Cloudflare Workers 服务端抓取东财行情(KV 缓存 + stale-while-revalidate),无 CORS 限制,现价刷新速度从 7s → 0.2s
@@ -31,18 +33,42 @@ python -m http.server 8000
 # 访问 http://localhost:8000/
 ```
 
-## 账户隔离
+## 动态百分位系统(v0.23 核心升级)
 
-系统在 `FTApp.state.accounts` 下维护两个独立账户:
+原版使用 `price-history.json` 的静态 low/high 区间计算 `(price-low)/(high-low)*100` (min-max 归一化),存在两个问题:
 
-| 账户 | key | 数据集 |
+1. **不是统计分位**:区间位置% ≠ 统计分位,容易误读为"价格在历史上处于什么水平"  
+2. **静态上限卡死**:品种创新高后永久 100%,不再有区分度
+
+v0.23 改为:
+
+```
+百分位 = 现价高于历史上多少%交易日的收盘价
+       = (收盘价低于现价的交易日数 ÷ 总交易日数) × 100
+```
+
+| 项目 | 旧版 | v0.23 |
 |---|---|---|
-| 模拟盘 | `sim` | pool / trades / closedTrades / journal / equityHistory / fundamentals |
-| 实盘 | `real` | 同上 + realTrades(实盘成交流水) |
+| 数据源 | `price-history.json`(手工维护) | 东财 `push2his` 日线K线(自动拉取,1000条≈4年) |
+| 算法 | `(price-low)/(high-low)*100` | 二分查找真实统计分位 |
+| 缓存 | 无 | 独立 localStorage key `futures_percentile_data`,24h 保鲜 |
+| 数据不足 | 不检测 | <500 个交易日标记 ⚠ 样本不足3年 |
+| 刷新策略 | 静态文件 | 云端 Worker 缓存 → 直连分批(每批3个,间隔2s) → JSONP 三保险 |
 
-- 顶部切换按钮触发 `FTApp.switchAccount(type)` → 派发 `ft:account-switched` 事件 → `FTRender.renderAll()` 路由到当前页对应渲染方法
-- 实盘录入页强制锁定 `real` 账户,切到其他页时账户徽章自动跟随
-- 持仓、日志、资金曲线、归因图等所有渲染均基于 `FTApp.getCurrentAccount()` 读取,杜绝混渲
+- 多晶硅(2024.12上市)、碳酸锂(2023.07上市)等品种会自动标注"样本不足3年"
+- 创新高品种的百分位可以达到 100%(历史上从未这么高过),不再被静态上限卡住
+- 过渡期兼容:动态数据未加载完成时使用旧静态文件预填充,并标注"~静态"
+
+## 左侧观察信号(⚡极端低位)
+
+在信号引擎的趋势过滤优先级中新增独立判定:
+
+```
+if 分位 < 10% && (动量down || 动量unknown || 基本面缺失 || 基本面 < 40)
+  → ⚡极端低位 (左侧观察提醒,非买卖建议)
+```
+
+不破坏原有右侧买入纪律(`分位≤25% + 动量up/flat + composite ≥ 70`),仅在极端低位时提供底仓探索参考。
 
 ## 工作流
 
@@ -52,9 +78,9 @@ python -m http.server 8000
    │          │           │                │                  │              └─ 资金曲线/回撤/归因
    │          │           │                │                  └─ 历史成交 + 复盘笔记
    │          │           │                └─ 开仓/加仓/平仓 + 止损止盈方向校验
-   │          │           └─ 估值·动量·基本面三因子 + 趋势过滤 + 持仓标记
+   │          │           └─ 估值·动量·基本面三因子 + 趋势过滤 + 极低位标志 + 持仓标记
    │          └─ 五维评分(供需/库存/基差/宏观/技术) + 位置定性 + 数据源开关归一化
-   └─ 品种行情 + 历史分位% + 成本线 + 价差监控
+   └─ 品种行情 + 动态百分位 + 成本线 + 价差监控
 ```
 
 每个环节均按当前账户(模拟盘/实盘)独立隔离,数据互不污染。
@@ -63,9 +89,9 @@ python -m http.server 8000
 
 | 页面 | 文件 | 说明 |
 |---|---|---|
-| 观察池 | `pages/pool.html` | 品种行情 + 历史分位% + 成本线 + 价差监控 + 添加/移除品种 |
+| 观察池 | `pages/pool.html` | 品种行情 + 动态百分位(近3年K线) + 成本线 + 价差监控 + 添加/移除品种 |
 | 基本面 | `pages/fundamental.html` | 五维评分(供需/库存/基差/宏观/技术) + 位置定性小结 + 数据源开关归一化 |
-| 信号引擎 | `pages/signal.html` | 估值·动量·基本面三因子矩阵 + 趋势过滤 + 持仓品种高亮角标 |
+| 信号引擎 | `pages/signal.html` | 估值·动量·基本面三因子矩阵 + 趋势过滤 + 极低位标志 + 持仓品种高亮角标 |
 | 模拟交易 | `pages/trade.html` | 模拟开/加/平仓 + 止损止盈方向校验 + 持仓管理 + 浮动盈亏 + 移仓换月 |
 | 实盘录入 | `pages/real-trade.html` | 实盘成交流水录入 + 合约按交易所分组(主力+5个活跃月) + 三合一智能搜索 + 按钮化交易类型 |
 | 交易日志 | `pages/journal.html` | 历史成交记录 + 复盘笔记 + 按品种/类型/关键词筛选 |
@@ -86,20 +112,20 @@ Sirius-war-room/
 │   ├── dashboard.html           # 仪表盘
 │   └── settings.html             # 设置
 ├── shared/
-│   ├── app-core.js              # 状态管理 + 数据存储 + 行情抓取(双账户隔离)
+│   ├── app-core.js              # 状态管理 + 数据存储 + 行情抓取 + 动态百分位系统(双账户隔离)
 │   ├── cloud-sync.js            # 飞书云同步模块(本地优先 + 异步同步 + reinit 机制)
 │   ├── chart-engine.js          # Canvas 图表引擎(资金/回撤/归因/胜率)
-│   ├── ui-core.js               # UI 渲染 + 业务逻辑 + 账户切换全局监听
+│   ├── ui-core.js               # UI 渲染 + 业务逻辑 + 信号引擎(含极低位标志) + 账户切换全局监听
 │   ├── real-trade.js            # 实盘录入模块(合约搜索/按钮化类型/方向校验)
 │   ├── fund-dimension-config.js # 基本面五维配置 + 模板 + 拒绝闸门
 │   ├── styles.css               # 公共样式 + Claude Design System 变量
 │   ├── cost-reference.json      # 成本参考数据
-│   ├── price-history.json       # 历史价格数据
+│   ├── price-history.json       # 历史价格数据(已废弃,保留仅兼容)
 │   └── fundamental-feed.json    # 基本面外部信号源
 ├── worker/                      # Cloudflare Workers 代理
 │   ├── src/
 │   │   ├── index.js             # Worker 入口
-│   │   ├── router.js            # 路由 + token 校验 + 行情缓存端点
+│   │   ├── router.js            # 路由 + token 校验 + 行情缓存端点 + K线缓存端点
 │   │   ├── price-fetcher.js     # 东财行情服务端抓取(现价 + K线)
 │   │   ├── feishu.js            # 飞书 API 封装
 │   │   └── response.js          # 统一响应工具
@@ -159,6 +185,7 @@ Sirius-war-room/
      │  GET /api/prices ──→ KV 新鲜 → 直接返回              │
      │  GET /api/prices ──→ KV 过期 → 返回旧值 + 后台刷新   │
      │  POST /api/prices/refresh ──→ 强制刷新 + 飞书持久化   │
+     │  GET  /api/klines  ──→ 返回缓存K线(百分位数据用)    │
      │                                                     │
      │                          fetchAllPrices(symbols)     │
      │  push2.eastmoney.com ◄────────────────────────────── │
@@ -181,6 +208,16 @@ Sirius-war-room/
 - Worker 启用 CORS,仅允许 GitHub Pages 域名
 
 ## Changelog
+
+### v0.23 (2026-07) — 动态百分位 + 左侧极端低位信号
+
+- **动态百分位系统**:废弃静态 `price-history.json` 的 min-max 区间%,改为从东财近3年日线K线实时回补,用二分查找计算真实统计分位。独立 localStorage 缓存 24h 保鲜,云端 Worker 优先→直连分批 JSONP 三保险。
+- **数据不足标记**:<500 个交易日的品种显示「⚠样本不足3年」,多晶硅、碳酸锂等新上市品种自动标注。
+- **静态预填充**:动态数据未加载完成时从旧 price-history.json 合成预填充,标注「~静态」避免空白期。
+- **左侧极端低位信号**:信号引擎新增"⚡极端低位"独立标志(分位<10% + 动量/基本面未确认),不破坏右侧买入纪律。
+- **云同步 key 统一**:废弃 `ft_access_token` 死代码,统一为 `sirius_token`(saveSecure/loadSecure)。
+- **import 校验修复**:`validateImportData` 支持新账户隔离结构(accounts.sim),`handleImport` 改用 `Object.assign` 保留引用。
+- **文案修正**:README/pool.html 中"历史分位%"→"动态百分位(近3年K线)"。
 
 ### 2026-07 — Sirius 重构
 
